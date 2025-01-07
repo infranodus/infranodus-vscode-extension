@@ -1,0 +1,193 @@
+{
+  "name": "infranodus-graph-view",
+  "displayName": "InfraNodus Graph View",
+  "description": "VSCode extension that displays InfraNodus graph in the secondary sidebar",
+  "version": "0.5.5",
+  "author": "InfraNodus SAS",
+  "publisher": "infranodus",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/infranodus/infranodus-vscode-extension"
+  },
+  "license": "Copyright (c) 2024-2025 InfraNodus SAS. All rights reserved.",
+  "icon": "resources/logo.png",
+  "keywords": [
+    "graph",
+    "visualization",
+    "knowledge graph",
+    "obsidian",
+    "markdown",
+    "infranodus",
+    "network",
+    "mindmap",
+    "semantic",
+    "text analysis",
+    "ai",
+    "machine learning",
+    "data visualization",
+    "knowledge management",
+    "sidebar"
+  ],
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Visualization",
+    "Machine Learning",
+    "Data Science",
+    "Notebooks", 
+    "Education",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:infranodus-graph-view.graphView",
+    "onCommand:infranodus-graph-view.setApiKey",
+    "onWebviewPanel:infranodusClipboardView"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "InfraNodus Graph View",
+      "properties": {
+        "infranodus-graph-view.apiUrl": {
+          "type": "string",
+          "default": "https://infranodus.com",
+          "description": "InfraNodus API URL"
+        },
+        "infranodus-graph-view.graphUrl": {
+          "type": "string",
+          "default": "https://graph.infranodus.com",
+          "description": "InfraNodus Graph URL"
+        },
+        "infranodus-graph-view.graphPrefix": {
+          "type": "string",
+          "default": "Use the following knowledge graph data to make your response more precise",
+          "description": "Prefix text to add before the graph data when copying to clipboard"
+        },
+        "infranodus-graph-view.stopwords": {
+          "type": "array",
+          "default": [
+            "const",
+            "var",
+            "let"
+          ],
+          "description": "List of stopwords to exclude from text processing"
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "infranodus-graph-view",
+          "title": "InfraNodus Graph",
+          "icon": "resources/network-graph.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "infranodus-clipboard",
+          "title": "InfraNodus Log",
+          "icon": "resources/network-graph.svg"
+        }
+      ]
+    },
+    "views": {
+      "infranodus-graph-view": [
+        {
+          "type": "webview",
+          "id": "infranodus-graph-view.graphView",
+          "name": "InfraNodus Graph",
+          "visibility": "visible"
+        }
+      ],
+      "infranodus-clipboard": [
+        {
+          "type": "webview",
+          "id": "infranodus-graph-view.clipboardView",
+          "name": "InfraNodus Log"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "infranodus-graph-view.setApiKey",
+        "title": "InfraNodus Graph: Set API Key"
+      },
+      {
+        "command": "infranodus-graph-view.visualizeAsGraph",
+        "title": "InfraNodus Graph: Visualize as Graph"
+      },
+      {
+        "command": "infranodus-graph-view.openClipboard",
+        "title": "InfraNodus Graph: Open InfraNodus Log"
+      },
+      {
+        "command": "infranodus-graph-view.getGraph",
+        "title": "InfraNodus Graph: Paste Graph in a File"
+      },
+      {
+        "command": "infranodus-graph-view.getSelectedGraph",
+        "title": "InfraNodus Graph: Paste Selected Graph in a File"
+      },
+      {
+        "command": "infranodus-graph-view.visualizeDiffAsGraph",
+        "title": "InfraNodus Graph: Visualize Diff as Graph"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "infranodus-graph-view.visualizeAsGraph",
+          "group": "z_commands",
+          "when": "resourceLangId || explorerResourceIsFolder"
+        },
+        {
+          "command": "infranodus-graph-view.visualizeDiffAsGraph",
+          "group": "z_commands",
+          "when": "resourceLangId || explorerResourceIsFolder"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "infranodus-graph-view.visualizeAsGraph",
+          "group": "z_commands"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "infranodus-graph-view.getGraph",
+          "when": "true"
+        }
+      ]
+    },
+    "chatCommands": [
+      {
+        "command": "infranodus-graph-view.getGraph",
+        "name": "infranodus",
+        "description": "Get the current InfraNodus Graph",
+        "when": "inChat"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.84.0",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "@vscode/vsce": "^3.2.1",
+    "eslint": "^8.54.0",
+    "typescript": "^5.3.2"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "jwt-decode": "^4.0.0",
+    "rxjs": "^7.8.1"
+  }
+}
