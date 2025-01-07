@@ -44,7 +44,7 @@ This VSCode extension adds a view to the Secondary Side Bar that displays the [I
 
 ## Notes
 
-- This extension is a work in progress and is currently in alpha. We are working on adding more features and optimizing the user experience. For feedback, please, open an issue on [Github](https://github.com/infranodus/infranodus-graph-view/issues)
+- This extension is a work in progress and is currently in alpha. We are working on adding more features and optimizing the user experience. For feedback, please, open an issue on [Github](https://github.com/infranodus/infranodus-vscode-extension/issues)
 
 
 ## Usage
@@ -61,7 +61,7 @@ This VSCode extension adds a view to the Secondary Side Bar that displays the [I
 
 ## Manual Installation
 
-1. Get the InfraNodus Graph View `.vsix` file from the [releases](https://github.com/infranodus/infranodus-graph-view/releases) page
+1. Get the InfraNodus Graph View `.vsix` file from the [releases](https://github.com/infranodus/infranodus-vscode-extension/releases) page
 2. Open VS Code
 3. Press Ctrl+Shift+P (Windows/Linux) or Cmd+Shift+P (Mac)
 4. Type `Extensions: Install from VSIX`
@@ -85,6 +85,6 @@ This VSCode extension adds a view to the Secondary Side Bar that displays the [I
 
 ## Updates
 
-1. Check the [releases](https://github.com/infranodus/infranodus-graph-view/releases) page for new versions
+1. Check the [releases](https://github.com/infranodus/infranodus-vscode-extension/releases) page for new versions
 2. Reinstall the extension
 3. Add your InfraNodus API key again
