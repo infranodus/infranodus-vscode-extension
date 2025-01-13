@@ -29,6 +29,8 @@ This VSCode extension adds a view to the Secondary Side Bar that displays the [I
 
 - Click the AI buttons to copy the relevant content and paste it into your favorite AI co-pilot (e.g. Cursor AI, Windsurf AI, GitHub Copilot, etc.)
 
+![InfraNodus AI Chat](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension-ai.gif)
+
 - Has an InfraNodus Log view with compressed graph data for your AI models
 
 
@@ -55,6 +57,8 @@ This VSCode extension adds a view to the Secondary Side Bar that displays the [I
 4. Right-click on a file or folder to open it in the InfraNodus Graph view
 5. Open the InfraNodus Log in terminal (using commands Cmd+Shift+P -> InfraNodus Graph: Open InfraNodus Log)
 6. Use commands (Cmd+Shift+P -> InfraNodus Graph: Paste (Selected) Graph in a File) to copy the (selected) graph data to a file — this is useful for using with AI co-pilot chatbots
+7. Use the features outlined above to navigate and search through your content using the graph
+8. Use the AI buttons to generate a prompt and then copy it to your favorite AI chat (e.g. GitHub Copilot, Codeium, Continue, Cascade in Windsurf AI)
 
 
 
