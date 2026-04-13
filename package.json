@@ -2,7 +2,7 @@
 	"name": "infranodus-graph-view",
 	"displayName": "InfraNodus Graph View",
 	"description": "Knowledge graph for your text content, helps find connections and gaps, generate context-aware AI prompts.",
-	"version": "0.6.6",
+	"version": "0.6.7",
 	"author": "InfraNodus SAS",
 	"publisher": "infranodus",
 	"repository": {
@@ -52,12 +52,12 @@
 				"infranodus-graph-view.apiUrl": {
 					"type": "string",
 					"default": "https://infranodus.com",
-					"description": "InfraNodus API URL"
+					"description": "InfraNodus API URL (default: https://infranodus.com)"
 				},
 				"infranodus-graph-view.graphUrl": {
 					"type": "string",
 					"default": "https://graph.infranodus.com",
-					"description": "InfraNodus Graph URL"
+					"description": "InfraNodus Graph URL (default: https://graph.infranodus.com)"
 				},
 				"infranodus-graph-view.graphPrefix": {
 					"type": "string",
@@ -112,6 +112,19 @@
 						"Only [[Wiki Links]] and #Hashtags"
 					],
 					"description": "How to process parts of speech in the text for graph generation"
+				},
+				"infranodus-graph-view.contentToSend": {
+					"type": "string",
+					"default": "PARSED_TEXT_ONLY",
+					"enum": [
+						"PARSED_TEXT_ONLY",
+						"FULL_FILE_CONTENTS"
+					],
+					"enumItemLabels": [
+						"Parsed Text Only (comments, plain text, [[wikilinks]])",
+						"Full File Contents"
+					],
+					"description": "What content to send for analysis: parsed text extracts only comments, plain text, and [[wikilinks]] from code files; full file contents sends everything"
 				}
 			}
 		},

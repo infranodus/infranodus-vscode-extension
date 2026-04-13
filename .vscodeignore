@@ -1,0 +1,11 @@
+.vscode/**
+.git/**
+.gitignore
+.DS_Store
+src/**/*.ts
+out/**/*.map
+node_modules/**
+resources/*.gif
+resources/infranodus-extension.png
+*.vsix
+tsconfig.json

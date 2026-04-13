@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfraNodus Graph</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px 10px 14px 10px;
+            display: flex;
+            flex-direction: column;
+            height: calc(100vh - 14px);
+        }
+        .button-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .overlay-button {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: rgba(68, 68, 68, 0.92);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: rgba(255, 255, 255, 0.85);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            transition: all 0.2s ease;
+        }
+        .overlay-button:hover {
+            background: rgba(90, 90, 90, 0.95);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+        }
+        .overlay-button::before {
+            content: attr(data-tooltip);
+            position: absolute;
+            left: 50px;
+            background: rgba(50, 50, 50, 0.95);
+            color: rgba(255, 255, 255, 0.9);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            visibility: hidden;
+            opacity: 0;
+            transition: all 0.2s ease;
+        }
+        .overlay-button:hover::before {
+            visibility: visible;
+            opacity: 1;
+        }
+        .overlay-button svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .api-key-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+        }
+        .iframe-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            margin-bottom: 4px;
+        }
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            background: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="button-container">
+        <button id="analyzeButton" class="overlay-button" data-tooltip="Analyze Current Document">
+            <svg viewBox="0 0 24 24">
+                <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+        </button>
+        
+        <button id="copyButton" class="overlay-button" data-tooltip="Copy Graph or Selection to Clipboard">
+            <svg viewBox="0 0 24 24">
+                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>
+        </button>
+
+    </div>
+    <div class="api-key-container">
+        <button id="apiKeyButton" class="overlay-button" data-tooltip="Set InfraNodus API Key">
+            <svg viewBox="0 0 24 24">
+                <path d="M22 19h-6v-4h-2.68c-1.14 2.42-3.6 4-6.32 4-3.86 0-7-3.14-7-7s3.14-7 7-7c2.72 0 5.17 1.58 6.32 4H24v6h-2v4zm-4-2h2v-4h2v-2H11.94l-.23-.67C11.01 8.34 9.11 7 7 7c-2.76 0-5 2.24-5 5s2.24 5 5 5c2.11 0 4.01-1.34 4.71-3.33l.23-.67H18v4zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3zm0-4c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
+            </svg>
+        </button>
+    </div>
+    <div class="iframe-container margin-right: 8px;">
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="loading-spinner"></div>
+        </div>
+        <iframe id="graphFrame" src="about:blank" frameborder="0"></iframe>
+    </div>
+    <script>
+        const vscode = acquireVsCodeApi();
+        
+        console.log("Activated InfraNodus Webview iFrame");
+        document.addEventListener('DOMContentLoaded', (event) => {
+            // Set up button click handlers
+            document.getElementById('analyzeButton').addEventListener('click', () => {
+                
+                vscode.postMessage({
+                    command: 'reload'
+                });
+            });
+
+            document.getElementById('copyButton').addEventListener('click', () => {
+                
+                vscode.postMessage({
+                    command: 'copyGraphToClipboard'
+                });
+            });
+
+            document.getElementById('apiKeyButton').addEventListener('click', () => {
+                
+                vscode.postMessage({
+                    command: 'setApiKey'
+                });
+            });
+
+            // Listen for messages from the iframe
+            window.addEventListener('message', event => {
+                const message = event.data;
+                
+                // Log all messages from iframe
+                // console.log('Message from iframe for webview:', message);
+
+                
+
+                if (message.type === 'LOAD_JSON') {
+
+                    if (message.payload && message.payload.error) {
+                        vscode.postMessage({
+                            command: 'showError',
+                            error: message.payload.error
+                        });
+                        return;
+                    }
+                    // Store the data in vscode state
+                    const currentState = vscode.getState() || {};
+                    vscode.setState({ 
+                        ...currentState,
+                        graphData: message.payload 
+                    });
+                    
+                    // Forward the message to the iframe
+                    document.getElementById('graphFrame').contentWindow.postMessage({
+                        type: 'LOAD_JSON',
+                        payload: message.payload
+                    }, '*');
+                }
+
+                if (message.type === 'UPDATE_SELECTED_NODES') {
+                    
+                    vscode.postMessage({
+                        command: 'forwardToClipboard',
+                        type: 'UPDATE_SELECTED_NODES',
+                        payload: {
+                            selectedNodes: message.payload, // for compability with the old iframe API version
+                            connectedNodes: message.connectedNodes
+                        }
+                    });
+                    
+                }
+
+                if (message.type === 'UPDATE_GROUPS') {
+                    
+                    vscode.postMessage({
+                        command: 'forwardToClipboard',
+                        type: 'UPDATE_GROUPS',
+                        payload: {
+                            selectedClusters: message.payload,
+                        }
+                    });
+                    
+                }
+
+                if (message.type === 'EXTERNAL_ACTION') {
+                    
+                    vscode.postMessage({
+                        command: 'processExternalAction',
+                        type: 'EXTERNAL_ACTION',
+                        payload: {
+                            action: message.payload
+                        }
+                    });
+                    
+                }
+             
+            });
+
+            // Add this to capture iframe's console logs
+            const iframe = document.getElementById('graphFrame');
+            iframe.onload = () => {
+                // Inject console logger into iframe
+                iframe.contentWindow?.postMessage({
+                    type: 'INJECT_LOGGER',
+                    payload: `
+                        (function() {
+                            const originalConsole = {
+                                log: console.log,
+                                warn: console.warn,
+                                error: console.error,
+                                info: console.info,
+                                debug: console.debug
+                            };
+
+                            function wrapConsole(method) {
+                                return function(...args) {
+                                    // Call original console method
+                                    originalConsole[method].apply(console, args);
+                                    // Forward to parent
+                                    window.parent.postMessage({
+                                        type: 'CONSOLE_LOG',
+                                        method: method,
+                                        args: args.map(arg => 
+                                            arg instanceof Error ? arg.toString() : arg
+                                        )
+                                    }, '*');
+                                };
+                            }
+
+                            // Wrap each console method
+                            console.log = wrapConsole('log');
+                            console.warn = wrapConsole('warn');
+                            console.error = wrapConsole('error');
+                            console.info = wrapConsole('info');
+                            console.debug = wrapConsole('debug');
+                        })();
+                    `
+                }, '*');
+            };
+
+            // Handle forwarded console logs
+            window.addEventListener('message', event => {
+                const message = event.data;
+                if (message.type === 'CONSOLE_LOG') {
+                    const { method, args } = message;
+                    switch (method) {
+                        case 'log':
+                            console.log('[iframe]:', ...args);
+                            break;
+                        case 'warn':
+                            console.warn('[iframe]:', ...args);
+                            break;
+                        case 'error':
+                            console.error('[iframe]:', ...args);
+                            break;
+                        case 'info':
+                            console.info('[iframe]:', ...args);
+                            break;
+                        case 'debug':
+                            console.debug('[iframe]:', ...args);
+                            break;
+                    }
+                } else if (message.type === 'SET_IFRAME_URL') {
+                    const iframeUrl = message.url + '?iframe=true&app=vscode' + (message.userId ? '&user=' + message.userId : '');
+                    // Store the URL using vscode state
+                    vscode.setState({ infraNodusIframeUrl: iframeUrl });
+                    document.getElementById('graphFrame').src = iframeUrl;
+                }
+            });
+
+            // Handle messages from the extension
+            window.addEventListener('message', event => {
+                const message = event.data;
+                switch (message.command) {
+                    case 'setContent':
+                        document.getElementById('graphFrame').src = message.url;
+                        break;
+                    case 'showLoading':
+                        document.getElementById('loadingOverlay').style.display = 'flex';
+                        break;
+                    case 'hideLoading':
+                        document.getElementById('loadingOverlay').style.display = 'none';
+                        break;
+                }
+            });
+        });
+
+        // Restore iframe URL and graph data from vscode state on page load
+        const state = vscode.getState();
+        // console.log("Initial state:", state);
+        const storedIframeUrl = state?.infraNodusIframeUrl;
+        const storedGraphData = state?.graphData;
+        let hasRestoredData = false;  // Flag to prevent multiple restorations
+        
+        if (storedIframeUrl) {
+            // console.log("Setting iframe URL:", storedIframeUrl);
+            document.getElementById('graphFrame').src = storedIframeUrl;
+        }
+
+        // Function to send graph data to iframe
+        function sendGraphDataToIframe() {
+            if (hasRestoredData || !storedGraphData) return;
+            
+            // console.log("Sending graph data to iframe:", storedGraphData);
+            const iframe = document.getElementById('graphFrame');
+            if (iframe && iframe.contentWindow) {
+                // Try both message types to see which one works
+                iframe.contentWindow.postMessage({
+                    type: 'LOAD_JSON',
+                    payload: storedGraphData
+                }, '*');
+
+                vscode.postMessage({
+                    command: 'refreshGraphStats',
+                    type: 'REFRESH_GRAPH',
+                });
+                // console.log("Sent LOAD_JSON message to iframe");
+
+                // Also try UPDATE_GRAPH as backup
+                // TODO use if there's a problem with webview reload
+                // setTimeout(() => {
+                //     iframe.contentWindow.postMessage({
+                //         type: 'UPDATE_GRAPH',
+                //         payload: storedGraphData
+                //     }, '*');
+                //     console.log("Sent UPDATE_GRAPH message to iframe");
+                // }, 500);
+                
+                hasRestoredData = true;
+            }
+        }
+
+        window.addEventListener('message', event => {
+            const message = event.data;
+            
+            // Log all messages from iframe with their full content
+            // console.log('Webview received message:', {
+            //     type: message.type,
+            //     payload: message.payload,
+            //     fullMessage: message
+            // });
+
+            // Listen for READY message from iframe
+            if (message.type === 'READY') {
+                // console.log('Iframe is ready, sending stored data');
+                sendGraphDataToIframe();
+            }
+
+            switch (message.type) {
+                case 'PROCESSING_START':
+                    // Update UI to show processing state
+                    document.getElementById('graphFrame').style.opacity = '0.5';
+                    break;
+
+                case 'PROCESSING_COMPLETE':
+                    // Restore UI
+                    document.getElementById('graphFrame').style.opacity = '1';
+                    break;
+
+                case 'PROCESSING_ERROR':
+                    // Handle error state
+                    document.getElementById('graphFrame').style.opacity = '1';
+                    console.error('Processing error:', message.error);
+                    break;
+
+                case 'LOAD_JSON':
+                    // Update the iframe with new data and persist it
+                    // console.log("LOAD_JSON EVENT received with payload:", message.payload)
+                    const iframe = document.getElementById('graphFrame');
+                    if (iframe && iframe.contentWindow) {
+                        // Store the data in vscode state
+                        const currentState = vscode.getState() || {};
+                        vscode.setState({ 
+                            ...currentState,
+                            graphData: message.payload 
+                        });
+                        // console.log("Updated state with new graph data:", message.payload);
+                        
+                        iframe.contentWindow.postMessage({
+                            type: 'LOAD_JSON',  // Changed to match the original type
+                            payload: message.payload
+                        }, '*');
+                        // console.log("Forwarded LOAD_JSON to iframe");
+
+                        vscode.postMessage({
+                            command: 'refreshGraphStats',
+                            type: 'REFRESH_GRAPH',
+                        });
+                    }
+                    break;
+            }
+        });
+    </script>
+</body>
+</html>

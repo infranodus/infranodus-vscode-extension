@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>InfraNodus Clipboard</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 10px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            font-family: var(--vscode-font-family);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+        }
+
+        #chat-container {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 10px;
+            padding: 10px;
+        }
+
+        .message-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+
+        .message {
+            padding: 8px 12px;
+            border-radius: 6px;
+            max-width: 100%;
+            margin-top: 32px;
+            background-color: var(--vscode-editor-selectionBackground);
+        }
+
+        .graph-message {
+            width: 100%;
+            max-width: 100%;
+            padding: 10px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            overflow-x: auto;
+        }
+
+        .copy-button {
+            position: absolute;
+            top: -24px;
+            left: 0;
+            padding: 4px;
+            background-color: transparent;
+            color: var(--vscode-foreground);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            height: 24px;
+            font-size: 12px;
+        }
+
+        .copy-button:hover {
+            opacity: 1;
+        }
+
+        .copy-button svg {
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .copy-feedback {
+            position: absolute;
+            top: -24px;
+            left: 70px;
+            background-color: var(--vscode-editor-background);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="chat-container"></div>
+
+    <script>
+        const vscode = acquireVsCodeApi();
+        const chatContainer = document.getElementById('chat-container');
+
+        function showCopyFeedback(button) {
+            const feedback = button.parentElement.querySelector('.copy-feedback');
+            feedback.style.display = 'block';
+            setTimeout(() => {
+                feedback.style.display = 'none';
+            }, 2000);
+        }
+
+        async function copyToClipboard(text, button) {
+            try {
+                await navigator.clipboard.writeText(text);
+                showCopyFeedback(button);
+            } catch (err) {
+                console.error('Failed to copy text: ', err);
+            }
+        }
+
+        function createMessageElement(content, isGraph = false) {
+            const containerDiv = document.createElement('div');
+            containerDiv.className = 'message-container';
+
+            const copyButton = document.createElement('button');
+            copyButton.className = 'copy-button';
+            copyButton.title = 'Copy to clipboard';
+            copyButton.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                    <path d="M8 4h8"/>
+                </svg>
+                Copy`;
+            copyButton.onclick = () => copyToClipboard(content, copyButton);
+
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'copy-feedback';
+            feedbackDiv.textContent = 'Copied!';
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = isGraph ? 'message graph-message' : 'message';
+            messageDiv.textContent = content;
+
+            containerDiv.appendChild(copyButton);
+            containerDiv.appendChild(feedbackDiv);
+            containerDiv.appendChild(messageDiv);
+
+            return containerDiv;
+        }
+
+        function addGraphMessage(dotGraph) {
+            const graphElement = createMessageElement(dotGraph, true);
+            chatContainer.appendChild(graphElement);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        window.addEventListener('message', event => {
+            console.log('Message from iframe for clipboard:', event.data);
+            const message = event.data;
+            switch (message.type) {
+                case 'updateDotGraph':
+                    
+                    addGraphMessage(message.dotGraph);
+                    
+                    break;
+                case 'UPDATE_SELECTED_NODES':
+                    
+                    vscode.postMessage({
+                        type: 'UPDATE_SELECTED_NODES',
+                        payload: {
+                            selectedNodes: message.payload,
+                            connectedNodes: message.connectedNodes
+                        }
+                    });
+                    
+                    break;
+               
+            }
+        });
+    </script>
+</body>
+</html>

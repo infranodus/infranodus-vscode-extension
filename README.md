@@ -68,6 +68,7 @@ _Note, some people use this extension with their code bases as well, but at the 
 11. You can customize the prompts generated when you click on the graph's AI and context buttons in the extension's settings.
 12. You can also customize the type of processing. For instance, by default the extension will prioritize [[wiki links]] and #hashtags to words, but will also include single words if there are no [[wiki links]] in your text. You might want to choose to process [[wiki links]] only in the settings.
 13. You can add "stopwords" in the settings: the words and terms that the graph should not process. Useful for auxiliary terms and function names.
+14. By default, we process only plain text, however, you can choose to process the full file content also in the Extension settings
 
 ## Recommended Tools
 
