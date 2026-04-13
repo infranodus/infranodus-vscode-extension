@@ -99,10 +99,15 @@ _Note, some people use this extension with their code bases as well, but at the 
 
 To then publish the extension:
 
-```
-vsce logout infranodus
-vsce publish
-```
+1. Update version in `package.json`
+2. Run `vsce package`
+3. Copy the new `.vsix` file to the repo that is to be published
+4. Commit both repos
+5. Go to the repo that is to be published
+6. Run `git tag 0.x.x`
+7. Run `git publish origin 0.x.x`
+8. Run `vsce logout your_user_name`
+9. Run `vsce publish`
 
 ## Updates
 
