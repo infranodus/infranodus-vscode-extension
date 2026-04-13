@@ -97,6 +97,13 @@ _Note, some people use this extension with their code bases as well, but at the 
 5. Open VS Code
 6. Follow the steps in the Manual Installation section above
 
+To then publish the extension:
+
+```
+vsce logout infranodus
+vsce publish
+```
+
 ## Updates
 
 1. Check the [releases](https://github.com/infranodus/infranodus-vscode-extension/releases) page for new versions
