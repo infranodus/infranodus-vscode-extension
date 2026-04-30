@@ -11,6 +11,107 @@ interface CustomJwtPayload extends JwtPayload {
 	};
 }
 
+type GraphAiAdviceRequestMode = "question" | "develop" | "summary";
+
+function getResponseErrorMessage(data: unknown): string | undefined {
+	if (!data) {
+		return undefined;
+	}
+
+	if (typeof data === "string") {
+		return data;
+	}
+
+	if (typeof data !== "object") {
+		return String(data);
+	}
+
+	const responseData = data as { message?: unknown; error?: unknown };
+	if (typeof responseData.message === "string") {
+		return responseData.message;
+	}
+
+	if (typeof responseData.error === "string") {
+		return responseData.error;
+	}
+
+	if (responseData.error) {
+		try {
+			return JSON.stringify(responseData.error);
+		} catch {
+			return String(responseData.error);
+		}
+	}
+
+	try {
+		return JSON.stringify(data);
+	} catch {
+		return undefined;
+	}
+}
+
+function getInfraNodusRequestErrorMessage(error: unknown): string {
+	if (!axios.isAxiosError(error)) {
+		if (error instanceof Error) {
+			return error.message || "Unknown error";
+		}
+
+		return String(error ?? "Unknown error");
+	}
+
+	const requestUrl = error.config?.url || "the configured InfraNodus API URL";
+	const responseMessage = getResponseErrorMessage(error.response?.data);
+
+	if (error.response) {
+		const statusText = error.response.statusText
+			? ` ${error.response.statusText}`
+			: "";
+		return [
+			`InfraNodus API returned ${error.response.status}${statusText}`,
+			responseMessage,
+		]
+			.filter(Boolean)
+			.join(": ");
+	}
+
+	if (error.code === "ECONNREFUSED") {
+		return `Cannot connect to InfraNodus at ${requestUrl}. Make sure the InfraNodus service is running and the API URL setting is correct.`;
+	}
+
+	if (error.code === "ECONNABORTED" || error.code === "ETIMEDOUT") {
+		return `The request to InfraNodus timed out at ${requestUrl}. Make sure the service is running and reachable.`;
+	}
+
+	if (error.code === "ENOTFOUND" || error.code === "EAI_AGAIN") {
+		return `Cannot resolve the InfraNodus API host for ${requestUrl}. Check the API URL setting and your network connection.`;
+	}
+
+	if (error.request) {
+		return `Cannot reach InfraNodus at ${requestUrl}: ${error.message}. Make sure the service is running and reachable.`;
+	}
+
+	return error.message || "Unknown InfraNodus API error";
+}
+
+function logInfraNodusRequestError(error: unknown) {
+	if (axios.isAxiosError(error)) {
+		console.error("InfraNodus API request failed:", {
+			status: error.response?.status,
+			statusText: error.response?.statusText,
+			code: error.code,
+			message: error.message,
+			data: error.response?.data,
+			config: {
+				url: error.config?.url,
+				method: error.config?.method,
+			},
+		});
+		return;
+	}
+
+	console.error("InfraNodus request failed:", error);
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	const clipboardProvider = new ClipboardViewProvider(
 		context.extensionUri,
@@ -54,6 +155,9 @@ export function activate(context: vscode.ExtensionContext) {
 						}
 					}
 					await context.secrets.store("infranodus-api-key", apiKey);
+					await vscode.workspace
+						.getConfiguration("infranodus-graph-view")
+						.update("apiKey", apiKey, vscode.ConfigurationTarget.Global);
 					vscode.window.showInformationMessage("API key saved successfully!");
 				}
 			},
@@ -207,14 +311,12 @@ export function activate(context: vscode.ExtensionContext) {
 					const documentName = activeDocument
 						? activeDocument.uri.path.split("/").pop() || "diff"
 						: "diff";
-					const diffFileName =
-						uri?.path.split("/").pop() || documentName;
+					const diffFileName = uri?.path.split("/").pop() || documentName;
 
-					const diffContentToProcess =
-						provider._processTextForAnalysis(
-							diffContent,
-							diffFileName,
-						);
+					const diffContentToProcess = provider._processTextForAnalysis(
+						diffContent,
+						diffFileName,
+					);
 					await provider.processContent(diffContentToProcess, documentName);
 				} catch (error) {
 					vscode.window.showErrorMessage(
@@ -270,11 +372,10 @@ export function activate(context: vscode.ExtensionContext) {
 						? activeDocument.uri.path.split("/").pop() || "diff"
 						: "diff";
 
-					const diffContentToProcess =
-						provider._processTextForAnalysis(
-							diffContent,
-							documentName,
-						);
+					const diffContentToProcess = provider._processTextForAnalysis(
+						diffContent,
+						documentName,
+					);
 					await provider.processContent(diffContentToProcess, documentName);
 				} catch (error) {
 					vscode.window.showErrorMessage(
@@ -290,6 +391,8 @@ export function activate(context: vscode.ExtensionContext) {
 class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private topicsSubject = new Subject<any>();
+	private _lastSearchPattern: string = "";
+	private _lastFilesToInclude: string = "";
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -310,6 +413,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	public getContentToSend(): string {
 		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
 		return config.get("contentToSend") || "PARSED_TEXT_ONLY";
+	}
+
+	public getModelToUse(): string {
+		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
+		return config.get("modelToUse") || "gpt-5.4";
 	}
 
 	public resolveWebviewView(
@@ -378,6 +486,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "setApiKey":
 					vscode.commands.executeCommand("infranodus-graph-view.setApiKey");
 					return;
+				case "openSettings":
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"@ext:infranodus.infranodus-graph-view",
+					);
+					return;
 				case "refreshGraphStats":
 					this._clipboardProvider.updateSelectedClusters([]);
 
@@ -409,6 +523,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					}
 				case "processExternalAction":
 					const actionMessage = message.payload?.action;
+					console.log(
+						"[InfraNodus] processExternalAction received:",
+						actionMessage,
+					);
 
 					if (
 						actionMessage &&
@@ -466,21 +584,33 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 					const filesToInclude = this.generateCurrentUrl();
 
+					if (actionMessage == "context" || actionMessage == "context_gap") {
+						const currentContent = this._clipboardProvider.getCurrentContent();
+						this._view?.webview.postMessage({
+							command: "showAnalyzedContext",
+							contextText: currentContent,
+						});
+
+						if (!currentContent) {
+							vscode.window.showInformationMessage(
+								"No analyzed context available yet. Analyze a document first.",
+							);
+						}
+
+						break;
+					}
+
 					let statementsToUse: string[] = [];
+					let pendingSearchPattern = "";
 
 					if (selectedWords.length == 0 && selectedClusters.length == 0) {
-						statementsToUse = statements.map(
-							(statement: any) => statement.content,
-						);
-
-						const searchPattern =
-							this.generateSearchPatternFromArray(statementsToUse);
-
-						await this.executeFileSearch({ searchPattern, filesToInclude });
+						// No selection means no targeted file search. Keep the prompt
+						// graph-based, but do not create a huge all-statements query.
+						statementsToUse = [];
 					}
 
 					if (selectedWords.length > 0) {
-						const searchPattern =
+						pendingSearchPattern =
 							this.generateSearchPatternFromArray(selectedWords);
 
 						statementsToUse = statements
@@ -490,8 +620,6 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								),
 							)
 							.map((statement: any) => statement.content);
-
-						await this.executeFileSearch({ searchPattern, filesToInclude });
 					}
 
 					if (selectedClusters.length > 0 && selectedWords.length == 0) {
@@ -505,35 +633,92 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 										statements,
 										selectedTopics: selectedClusters,
 									});
-						const searchPattern =
+						pendingSearchPattern =
 							this.generateSearchPatternFromArray(statementsToUse);
-
-						await this.executeFileSearch({ searchPattern, filesToInclude });
 					}
 
-					if (actionMessage == "context_gap" || actionMessage == "context")
-						break;
-
-					// TODO add to extension market
-					// TODO add own chat panel inside
+					this._lastSearchPattern = pendingSearchPattern;
+					this._lastFilesToInclude = filesToInclude;
+					console.log("[InfraNodus] AI action prepared", {
+						action: actionMessage,
+						selectedWords: selectedWords.length,
+						selectedClusters: selectedClusters.length,
+						statementsToUse: statementsToUse.length,
+						hasGraph: !!this._clipboardProvider.getCurrentGraph(),
+						viewExists: !!this._view,
+					});
 
 					setTimeout(() => {
 						const graphToUse = this._clipboardProvider.getCurrentGraph();
 						const contentToUse = statementsToUse.join("\n\n");
+						console.log("[InfraNodus] AI action posting prompt", {
+							action: actionMessage,
+							hasGraph: !!graphToUse,
+							viewExists: !!this._view,
+						});
 						if (graphToUse) {
+							const adviceRequestId = `${Date.now()}-${actionMessage}`;
 							const prefix = this.generatePrefix(actionMessage);
 							let contentWithPrefix = `${prefix}\n\n${graphToUse}`;
 							if (contentToUse) {
 								contentWithPrefix += `\n\nAnd take this context into account:\n\n${contentToUse}`;
 							}
 							vscode.env.clipboard.writeText(contentWithPrefix);
+
+							this._clipboardProvider.appendPromptLog({
+								action: actionMessage,
+								prompt: contentWithPrefix,
+							});
+
+							this._view?.webview.postMessage({
+								command: "showPrompt",
+								action: actionMessage,
+								label: this.getActionLabel(actionMessage),
+								prompt: contentWithPrefix,
+								canFindInFiles: !!pendingSearchPattern,
+								adviceRequestId,
+								isAdviceLoading:
+									!!this.getGraphAiAdviceRequestMode(actionMessage),
+								modelToUse: this.getModelToUse(),
+							});
+
 							vscode.window.showInformationMessage(
 								"Copied AI prompt with the graph structure to clipboard. See the InfraNodus Log view for details.",
 							);
+
+							const requestMode =
+								this.getGraphAiAdviceRequestMode(actionMessage);
+							if (requestMode) {
+								void this.requestGraphAiAdvice({
+									action: actionMessage,
+									adviceRequestId,
+									requestMode,
+									prompt: prefix,
+									promptContext: contentToUse,
+									pinnedNodes: selectedWords,
+									topicsToProcess: selectedClusters,
+								});
+							}
 						}
 					}, 500);
 
 					break;
+				case "findInFiles":
+					if (this._lastSearchPattern) {
+						await this.executeFileSearch({
+							searchPattern: this._lastSearchPattern,
+							filesToInclude:
+								this._lastFilesToInclude || this.generateCurrentUrl(),
+						});
+					} else {
+						vscode.window.showInformationMessage(
+							"Nothing to search for. Trigger an AI action on the graph first.",
+						);
+					}
+					return;
+				case "exportAnalyzedContextToInfraNodus":
+					await this.exportAnalyzedContextToInfraNodus();
+					return;
 				case "copyGraphToClipboard":
 					const graphContent = this._clipboardProvider.getCurrentGraph();
 					if (graphContent) {
@@ -649,6 +834,261 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		return "";
 	}
 
+	public getActionLabel(action: string): string {
+		const labelMap: Record<string, string> = {
+			question: "Question",
+			develop: "Idea",
+			summarize: "Summary",
+			context: "Context",
+			context_gap: "Context Gap",
+		};
+		return labelMap[action] || action;
+	}
+
+	private getGraphAiAdviceRequestMode(
+		action: string,
+	): GraphAiAdviceRequestMode | undefined {
+		const requestModeMap: Record<string, GraphAiAdviceRequestMode> = {
+			question: "question",
+			develop: "develop",
+			summarize: "summary",
+		};
+		return requestModeMap[action];
+	}
+
+	private async requestGraphAiAdvice({
+		action,
+		adviceRequestId,
+		requestMode,
+		prompt,
+		promptContext,
+		pinnedNodes,
+		topicsToProcess,
+	}: {
+		action: string;
+		adviceRequestId: string;
+		requestMode: GraphAiAdviceRequestMode;
+		prompt: string;
+		promptContext: string;
+		pinnedNodes: string[];
+		topicsToProcess: string[];
+	}) {
+		const graph = this._clipboardProvider.getCurrentGraphObject();
+		const statements = this._clipboardProvider.getCurrentStatementsObject();
+
+		if (!graph?.nodes || !graph?.edges || !graph?.attributes) {
+			this._view?.webview.postMessage({
+				command: "showGraphAiAdviceError",
+				adviceRequestId,
+				error:
+					"No Graphology graph is available yet. Analyze a document first.",
+			});
+			vscode.window.showWarningMessage(
+				"InfraNodus could not request AI advice: no Graphology graph is available yet.",
+			);
+			return;
+		}
+
+		const apiKey = await this.getApiKey();
+		if (!apiKey) {
+			this._view?.webview.postMessage({
+				command: "showGraphAiAdviceError",
+				adviceRequestId,
+				error: "Please set your API key first.",
+			});
+			vscode.window.showErrorMessage("Please set your API key first");
+			return;
+		}
+
+		const formattedApiKey = apiKey.startsWith("Bearer ")
+			? apiKey
+			: `Bearer ${apiKey}`;
+
+		try {
+			const response = await axios.post(
+				`${this.getServerUrl()}/api/v1/graphAiAdvice`,
+				{
+					prompt,
+					userPrompt: prompt ? [{ role: "user", content: prompt }] : [],
+					promptContext,
+					promptChatContext: [],
+					requestMode,
+					modelToUse: this.getModelToUse(),
+					pinnedNodes,
+					topicsToProcess,
+					graph,
+					statements,
+				},
+				{
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: formattedApiKey,
+					},
+				},
+			);
+
+			if (response.status !== 200) {
+				throw new Error(`InfraNodus API request failed: ${response.status}`);
+			}
+
+			if (response.data?.error) {
+				const errorText =
+					typeof response.data.error === "string"
+						? response.data.error
+						: JSON.stringify(response.data.error);
+				throw new Error(errorText);
+			}
+
+			this._clipboardProvider.updateGraphAiAdvice({
+				action,
+				requestMode,
+				response: response.data,
+			});
+			this._view?.webview.postMessage({
+				command: "showGraphAiAdvice",
+				adviceRequestId,
+				responses: this.formatGraphAiAdviceResponses(response.data),
+			});
+		} catch (error) {
+			const message = getInfraNodusRequestErrorMessage(error);
+			logInfraNodusRequestError(error);
+			this._view?.webview.postMessage({
+				command: "showGraphAiAdviceError",
+				adviceRequestId,
+				error: message,
+			});
+			vscode.window.showWarningMessage(
+				`Could not generate InfraNodus AI advice: ${message}`,
+			);
+		}
+	}
+
+	private formatGraphAiAdviceResponses(data: any): string[] {
+		const aiAdvice = data?.aiAdvice;
+		if (Array.isArray(aiAdvice)) {
+			const adviceTexts = aiAdvice
+				.map((advice) => {
+					if (typeof advice === "string") {
+						return advice;
+					}
+					return advice?.text || advice?.content || "";
+				})
+				.filter(Boolean);
+
+			if (adviceTexts.length > 0) {
+				return adviceTexts;
+			}
+		}
+
+		if (typeof aiAdvice === "string") {
+			return [aiAdvice];
+		}
+
+		return [JSON.stringify(data, null, 2)];
+	}
+
+	public async getApiKey(): Promise<string | undefined> {
+		const configuredApiKey = vscode.workspace
+			.getConfiguration("infranodus-graph-view")
+			.get<string>("apiKey")
+			?.trim();
+
+		return (
+			configuredApiKey ||
+			(await this._context.secrets.get("infranodus-api-key"))
+		);
+	}
+
+	public async exportAnalyzedContextToInfraNodus() {
+		const text = this._clipboardProvider.getCurrentContent();
+		if (!text) {
+			vscode.window.showInformationMessage(
+				"No analyzed context available yet. Analyze a document first.",
+			);
+			return;
+		}
+
+		const graphName = await vscode.window.showInputBox({
+			prompt: "Enter the InfraNodus graph name to save this context",
+			placeHolder: "my-vscode-context",
+			value:
+				this._clipboardProvider.getCurrentUrl()?.split(/[\\/]/).pop() ||
+				"vscode-context",
+			ignoreFocusOut: true,
+		});
+
+		if (!graphName) {
+			return;
+		}
+
+		const apiKey = await this.getApiKey();
+		if (!apiKey) {
+			vscode.window.showErrorMessage("Please set your API key first");
+			return;
+		}
+
+		const formattedApiKey = apiKey.startsWith("Bearer ")
+			? apiKey
+			: `Bearer ${apiKey}`;
+
+		const textRequest = {
+			name: graphName,
+			text,
+			aiTopics: true,
+			stopwords: this.getInfraNodusStopwords(),
+			contextSettings: {
+				partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
+				doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+				mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+			},
+		};
+
+		try {
+			this._view?.webview.postMessage({ command: "showLoading" });
+			const response = await axios.post(
+				`${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(graphName)}`,
+				textRequest,
+				{
+					headers: {
+						"Content-Type": "application/json",
+						Authorization: formattedApiKey,
+					},
+				},
+			);
+
+			if (response.status !== 200) {
+				throw new Error(`InfraNodus API request failed: ${response.status}`);
+			}
+
+			if (response.data?.error) {
+				const errorText =
+					typeof response.data.error === "string"
+						? response.data.error
+						: JSON.stringify(response.data.error);
+				throw new Error(errorText);
+			}
+
+			vscode.window.showInformationMessage(
+				`Analyzed context exported to InfraNodus graph "${graphName}".`,
+			);
+		} catch (error) {
+			const message = getInfraNodusRequestErrorMessage(error);
+			if (axios.isAxiosError(error)) {
+				vscode.window.showErrorMessage(
+					`Could not export context to InfraNodus: ${message}`,
+				);
+				logInfraNodusRequestError(error);
+				return;
+			}
+			logInfraNodusRequestError(error);
+			vscode.window.showErrorMessage(
+				`Could not export context to InfraNodus: ${message}`,
+			);
+		} finally {
+			this._view?.webview.postMessage({ command: "hideLoading" });
+		}
+	}
+
 	public async processDocument(document?: vscode.TextDocument) {
 		try {
 			// Show loading overlay
@@ -668,7 +1108,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				documentToProcess.fileName,
 			);
 
-			const apiKey = await this._context.secrets.get("infranodus-api-key");
+			const apiKey = await this.getApiKey();
 			if (!apiKey) {
 				vscode.window.showErrorMessage("Please set your API key first");
 				return;
@@ -708,15 +1148,24 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			}
 
 			if (response.data.error) {
-				if (response.data.error.includes("log in")) {
+				const errorText =
+					typeof response.data.error === "string"
+						? response.data.error
+						: JSON.stringify(response.data.error);
+				if (errorText.includes("log in")) {
 					vscode.window.showInformationMessage(
 						`Please, add your InfraNodus API key in the extension settings.`,
 					);
 					return;
 				}
-				throw new Error(
-					`InfraNodus API request failed: ${response.data.error}`,
+				console.warn(
+					"[InfraNodus] API returned an error, keeping previous graph:",
+					errorText,
 				);
+				vscode.window.showWarningMessage(
+					`InfraNodus could not refresh the graph: ${errorText}. Using the last successful analysis.`,
+				);
+				return;
 			}
 
 			this._clipboardProvider.updateCurrentContent(text);
@@ -732,6 +1181,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				response.data.entriesAndGraphOfContext.graph
 			) {
 				this._clipboardProvider.updateCurrentContent(textToProcess);
+
+				const graphObject = response.data.entriesAndGraphOfContext.graph;
+				const statementsObject =
+					response.data.entriesAndGraphOfContext.statements ?? [];
+				this._clipboardProvider.updateGraphAndStatements({
+					graph: graphObject,
+					statements: statementsObject,
+				});
 
 				// TODO do we really need this here?
 				// Update the webview with new data
@@ -788,23 +1245,16 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			}
 		} catch (error) {
 			if (axios.isAxiosError(error)) {
-				console.error("Axios Error Details:", {
-					status: error.response?.status,
-					statusText: error.response?.statusText,
-					data: error.response?.data,
-					config: {
-						url: error.config?.url,
-						method: error.config?.method,
-						headers: error.config?.headers,
-					},
-				});
+				const message = getInfraNodusRequestErrorMessage(error);
+				logInfraNodusRequestError(error);
 				vscode.window.showErrorMessage(
-					`Error processing the document (A): ${error.response?.status} - ${error.response?.data?.message || error.message}`,
+					`Error processing the document: ${message}`,
 				);
 			} else {
-				console.error("Non-Axios Error:", error);
+				const message = getInfraNodusRequestErrorMessage(error);
+				logInfraNodusRequestError(error);
 				vscode.window.showErrorMessage(
-					"Error processing the document (N): " + (error as Error).message,
+					"Error processing the document: " + message,
 				);
 			}
 		} finally {
@@ -843,7 +1293,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 			this._view?.webview.postMessage({ command: "showLoading" });
 
-			const apiKey = await this._context.secrets.get("infranodus-api-key");
+			const apiKey = await this.getApiKey();
 			if (!apiKey) {
 				vscode.window.showErrorMessage("Please set your API key first");
 				return;
@@ -884,15 +1334,27 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			}
 
 			if (response.data.error) {
-				if (response.data.error.includes("log in")) {
+				const errorText =
+					typeof response.data.error === "string"
+						? response.data.error
+						: JSON.stringify(response.data.error);
+				if (errorText.includes("log in")) {
 					vscode.window.showInformationMessage(
 						`Please, add your InfraNodus API key in the extension settings.`,
 					);
 					return;
 				}
-				throw new Error(
-					`InfraNodus API request failed: ${response.data.error}`,
+				console.warn(
+					"[InfraNodus] API returned an error, keeping previous graph:",
+					errorText,
 				);
+				vscode.window.showWarningMessage(
+					`InfraNodus could not refresh the graph: ${errorText}. Using the last successful analysis.`,
+				);
+				if (this._view) {
+					this._view.webview.postMessage({ type: "PROCESSING_COMPLETE" });
+				}
+				return;
 			}
 
 			if (
@@ -901,6 +1363,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				response.data.entriesAndGraphOfContext.graph
 			) {
 				this._clipboardProvider.updateCurrentContent(content);
+
+				const graphObject = response.data.entriesAndGraphOfContext.graph;
+				const statementsObject =
+					response.data.entriesAndGraphOfContext.statements ?? [];
+				this._clipboardProvider.updateGraphAndStatements({
+					graph: graphObject,
+					statements: statementsObject,
+				});
 
 				// Update the webview with new data
 				if (this._view) {
@@ -951,16 +1421,15 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				this._clipboardProvider.updateSelectedNodes([], []);
 			}
 		} catch (error) {
-			console.error("Error processing content:", error);
+			const message = getInfraNodusRequestErrorMessage(error);
+			logInfraNodusRequestError(error);
 			if (this._view) {
 				this._view.webview.postMessage({
 					type: "PROCESSING_ERROR",
-					error: (error as Error).message,
+					error: message,
 				});
 			}
-			vscode.window.showErrorMessage(
-				"Error processing content: " + (error as Error).message,
-			);
+			vscode.window.showErrorMessage("Error processing content: " + message);
 		} finally {
 			this._view?.webview.postMessage({ command: "hideLoading" });
 		}
@@ -1134,9 +1603,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	public _extractParsedText(text: string, fileName: string): string {
 		const ext = (fileName.split(".").pop() || "").toLowerCase();
 
-		if (
-			["md", "txt", "rst", "adoc", "org", "wiki", "log"].includes(ext)
-		) {
+		if (["md", "txt", "rst", "adoc", "org", "wiki", "log"].includes(ext)) {
 			return text;
 		}
 
@@ -1187,8 +1654,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		// Python docstrings
-		const docstrings =
-			text.match(/"{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}/g) || [];
+		const docstrings = text.match(/"{3}[\s\S]*?"{3}|'{3}[\s\S]*?'{3}/g) || [];
 		for (const d of docstrings) {
 			const content = d.slice(3, -3).trim();
 			if (content) extracted.push(content);
@@ -1222,9 +1688,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		// [[wikilinks]]
-		const wikilinks = [
-			...new Set(text.match(/\[\[[^\]]+\]\]/g) || []),
-		];
+		const wikilinks = [...new Set(text.match(/\[\[[^\]]+\]\]/g) || [])];
 		for (const w of wikilinks) {
 			if (!extracted.some((e) => e.includes(w))) {
 				extracted.push(w);
@@ -1239,7 +1703,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			return;
 		}
 
-		const apiKey = await this._context.secrets.get("infranodus-api-key");
+		const apiKey = await this.getApiKey();
 		let currentUser = "";
 
 		if (apiKey) {
@@ -1278,6 +1742,9 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 	private _selectedClusters: string[] = [];
 	private _contentAsText: string = "";
 	private _currentStatements: any[] = [];
+	private _currentGraphObject: any = {};
+	private _currentStatementsObject: any[] = [];
+	private _currentGraphAiAdvice: any = {};
 	private _currentUrl: string = "";
 
 	constructor(
@@ -1291,6 +1758,33 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 
 	public getCurrentContent(): string {
 		return this._contentAsText;
+	}
+
+	public appendPromptLog({
+		action,
+		prompt,
+	}: {
+		action: string;
+		prompt: string;
+	}) {
+		const labelMap: Record<string, string> = {
+			question: "Question",
+			develop: "Idea",
+			summarize: "Summary",
+			context: "Context",
+			context_gap: "Context Gap",
+		};
+		const label = labelMap[action] || action;
+
+		if (this._view) {
+			this._view.webview.postMessage({
+				type: "addPromptLog",
+				action,
+				label,
+				prompt,
+				timestamp: Date.now(),
+			});
+		}
 	}
 
 	public updateDotGraph({
@@ -1362,6 +1856,56 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 		return this._selectedDotGraph || this._currentDotGraph;
 	}
 
+	public updateGraphAndStatements({
+		graph,
+		statements,
+	}: {
+		graph: any;
+		statements: any[];
+	}) {
+		const graphObject = graph?.graphologyGraph || graph;
+
+		this._currentGraphObject = graphObject;
+		this._currentStatementsObject = statements;
+
+		this._context.globalState.update("InfraNodus Graph Object", graphObject);
+		this._context.globalState.update(
+			"InfraNodus Statements Object",
+			statements,
+		);
+	}
+
+	public getCurrentGraphObject(): any {
+		return this._currentGraphObject;
+	}
+
+	public getCurrentStatementsObject(): any[] {
+		return this._currentStatements.length > 0
+			? this._currentStatements
+			: this._currentStatementsObject;
+	}
+
+	public updateGraphAiAdvice({
+		action,
+		requestMode,
+		response,
+	}: {
+		action: string;
+		requestMode: GraphAiAdviceRequestMode;
+		response: any;
+	}) {
+		this._currentGraphAiAdvice = {
+			action,
+			requestMode,
+			response,
+		};
+
+		this._context.globalState.update(
+			"InfraNodus Graph AI Advice",
+			this._currentGraphAiAdvice,
+		);
+	}
+
 	public updateCurrentStatements({
 		currentStatements,
 		topClusters,
@@ -1384,11 +1928,16 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 				? { ...statement, topStatementOfCommunity: communityId }
 				: statement;
 		});
+		this._currentStatementsObject = this._currentStatements;
 
 		// Store in global state
 		this._context.globalState.update(
 			"InfraNodus Statements",
 			this._currentStatements,
+		);
+		this._context.globalState.update(
+			"InfraNodus Statements Object",
+			this._currentStatementsObject,
 		);
 	}
 

@@ -87,6 +87,114 @@
             font-size: 12px;
             display: none;
         }
+
+        .prompt-entry {
+            border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.12));
+            border-radius: 8px;
+            padding: 0;
+            margin-bottom: 14px;
+            background-color: var(--vscode-editor-background);
+            overflow: hidden;
+        }
+
+        .prompt-entry-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 14px;
+            background-color: var(--vscode-editorWidget-background, rgba(255,255,255,0.03));
+            border-bottom: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.08));
+        }
+
+        .prompt-entry-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--vscode-foreground);
+            opacity: 0.85;
+        }
+
+        .prompt-entry-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background-color: var(--vscode-badge-background, rgba(120,160,255,0.15));
+            color: var(--vscode-badge-foreground, var(--vscode-foreground));
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            text-transform: none;
+        }
+
+        .prompt-entry-meta {
+            font-size: 11px;
+            opacity: 0.6;
+        }
+
+        .prompt-entry-body {
+            padding: 12px 14px 0 14px;
+            font-family: var(--vscode-editor-font-family, monospace);
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .prompt-entry-footer {
+            display: flex;
+            justify-content: flex-end;
+            padding: 8px 10px 10px 10px;
+        }
+
+        .prompt-copy-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            font-size: 12px;
+            border-radius: 6px;
+            border: 1px solid var(--vscode-button-border, rgba(255,255,255,0.15));
+            background-color: var(--vscode-button-secondaryBackground, rgba(255,255,255,0.06));
+            color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+            cursor: pointer;
+            transition: background-color 0.15s ease, transform 0.1s ease;
+        }
+
+        .prompt-copy-button:hover {
+            background-color: var(--vscode-button-secondaryHoverBackground, rgba(255,255,255,0.1));
+        }
+
+        .prompt-copy-button:active {
+            transform: translateY(1px);
+        }
+
+        .prompt-copy-button svg {
+            width: 13px;
+            height: 13px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .prompt-copy-feedback {
+            margin-right: 10px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            align-self: center;
+        }
+
+        .prompt-copy-feedback.visible {
+            opacity: 0.8;
+        }
     </style>
 </head>
 <body>
@@ -150,17 +258,91 @@
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
 
+        function formatTimestamp(ts) {
+            try {
+                const d = ts ? new Date(ts) : new Date();
+                return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            } catch (e) {
+                return '';
+            }
+        }
+
+        function addPromptLogEntry({ label, action, prompt, timestamp }) {
+            const entry = document.createElement('div');
+            entry.className = 'prompt-entry';
+
+            const header = document.createElement('div');
+            header.className = 'prompt-entry-header';
+
+            const title = document.createElement('div');
+            title.className = 'prompt-entry-title';
+            title.innerHTML = `AI Prompt <span class="prompt-entry-badge">${label || action || ''}</span>`;
+
+            const meta = document.createElement('div');
+            meta.className = 'prompt-entry-meta';
+            meta.textContent = formatTimestamp(timestamp);
+
+            header.appendChild(title);
+            header.appendChild(meta);
+
+            const body = document.createElement('div');
+            body.className = 'prompt-entry-body';
+            body.textContent = prompt;
+
+            const footer = document.createElement('div');
+            footer.className = 'prompt-entry-footer';
+
+            const feedback = document.createElement('span');
+            feedback.className = 'prompt-copy-feedback';
+            feedback.textContent = 'Copied';
+
+            const copyBtn = document.createElement('button');
+            copyBtn.className = 'prompt-copy-button';
+            copyBtn.title = 'Copy prompt to clipboard';
+            copyBtn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                    <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
+                    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                    <path d="M8 4h8"/>
+                </svg>
+                Copy`;
+            copyBtn.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(prompt);
+                    feedback.classList.add('visible');
+                    setTimeout(() => feedback.classList.remove('visible'), 1500);
+                } catch (err) {
+                    console.error('Failed to copy prompt: ', err);
+                }
+            };
+
+            footer.appendChild(feedback);
+            footer.appendChild(copyBtn);
+
+            entry.appendChild(header);
+            entry.appendChild(body);
+            entry.appendChild(footer);
+
+            chatContainer.appendChild(entry);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
         window.addEventListener('message', event => {
             console.log('Message from iframe for clipboard:', event.data);
             const message = event.data;
             switch (message.type) {
                 case 'updateDotGraph':
-                    
+
                     addGraphMessage(message.dotGraph);
-                    
+
+                    break;
+                case 'addPromptLog':
+
+                    addPromptLogEntry(message);
+
                     break;
                 case 'UPDATE_SELECTED_NODES':
-                    
+
                     vscode.postMessage({
                         type: 'UPDATE_SELECTED_NODES',
                         payload: {
@@ -168,9 +350,9 @@
                             connectedNodes: message.connectedNodes
                         }
                     });
-                    
+
                     break;
-               
+
             }
         });
     </script>
