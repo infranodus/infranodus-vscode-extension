@@ -11,7 +11,11 @@ interface CustomJwtPayload extends JwtPayload {
 	};
 }
 
-type GraphAiAdviceRequestMode = "question" | "develop" | "summary";
+type GraphAiAdviceRequestMode =
+	| "question"
+	| "develop"
+	| "summary"
+	| "graph summary";
 
 function getResponseErrorMessage(data: unknown): string | undefined {
 	if (!data) {
@@ -522,10 +526,25 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						return;
 					}
 				case "processExternalAction":
-					const actionMessage = message.payload?.action;
+					// Dual-shape contract: when the graph emits a v1+ meta envelope,
+					// trust meta.action. Selection state was already propagated via
+					// UPDATE_SELECTED_NODES / UPDATE_GROUPS before EXTERNAL_ACTION
+					// arrived (microtask-sequenced graph-side), so the existing
+					// _clipboardProvider getters return the correct values.
+					const externalActionMeta = message.payload?.meta;
+					const rawActionMessage =
+						externalActionMeta && externalActionMeta.version >= 1
+							? externalActionMeta.action
+							: message.payload?.action;
+					const actionMessage =
+						rawActionMessage === "summarize" &&
+						externalActionMeta?.scope === "graph_topics"
+							? "graph summary"
+							: rawActionMessage;
 					console.log(
 						"[InfraNodus] processExternalAction received:",
 						actionMessage,
+						externalActionMeta ? { meta: externalActionMeta } : "",
 					);
 
 					if (
@@ -572,6 +591,8 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						actionMessage != "question" &&
 						actionMessage != "develop" &&
 						actionMessage != "summarize" &&
+						actionMessage != "graph summary" &&
+						actionMessage != "chat" &&
 						actionMessage != "context" &&
 						actionMessage != "context_gap"
 					)
@@ -624,7 +645,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 					if (selectedClusters.length > 0 && selectedWords.length == 0) {
 						statementsToUse =
-							actionMessage == "summarize" || actionMessage == "context"
+							actionMessage == "summarize" ||
+							actionMessage == "graph summary" ||
+							actionMessage == "context"
 								? this.getAllStatementsOfTopics({
 										statements,
 										selectedTopics: selectedClusters,
@@ -824,12 +847,21 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "promptQuestion",
 			develop: "promptIdea",
 			summarize: "promptSummary",
+			"graph summary":"promptSummary",
+			chat: "promptChat",
 			context: "promptContext",
 			context_gap: "promptContextGap",
 		};
 		const settingKey = settingsMap[action];
 		if (settingKey) {
-			return config.get<string>(settingKey) || "";
+			const fromConfig = config.get<string>(settingKey);
+			if (fromConfig) return fromConfig;
+		}
+		// Fallback prefix for chat — produces a prompt the user can paste into
+		// any external chat agent. No backend `requestMode` is registered for
+		// chat, so this path stops at clipboard + showPrompt.
+		if (action === "chat") {
+			return "Use the graph and context below to start a discussion. Answer follow-up questions referring to the graph structure when relevant.";
 		}
 		return "";
 	}
@@ -839,6 +871,8 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
+			"graph summary":"Graph Summary",
+			chat: "Chat",
 			context: "Context",
 			context_gap: "Context Gap",
 		};
@@ -852,6 +886,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "question",
 			develop: "develop",
 			summarize: "summary",
+			"graph summary":"graph summary",
 		};
 		return requestModeMap[action];
 	}
@@ -1771,6 +1806,7 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
+			"graph summary":"Graph Summary",
 			context: "Context",
 			context_gap: "Context Gap",
 		};

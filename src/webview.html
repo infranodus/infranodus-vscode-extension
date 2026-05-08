@@ -910,15 +910,16 @@
                 }
 
                 if (message.type === 'EXTERNAL_ACTION') {
-                    
+
                     vscode.postMessage({
                         command: 'processExternalAction',
                         type: 'EXTERNAL_ACTION',
                         payload: {
-                            action: message.payload
+                            action: message.payload,
+                            meta: message.meta
                         }
                     });
-                    
+
                 }
              
             });
