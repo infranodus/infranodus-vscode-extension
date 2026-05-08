@@ -688,9 +688,22 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						// Build a selection-scoped DOT graph from the meta-derived
 						// selection so the prompt matches what the user has highlighted
 						// (concepts subgraph / topic clusters / full graph if nothing).
+						// Topic names (AI-generated where available) are passed in so
+						// each cluster is rendered as `Topic Name:\n<edge list>`.
+						const allTopicNames = this._clipboardProvider.getTopicNames();
+						const topicNamesById = new Map<string, string>(
+							allTopicNames.map((t) => [String(t.id), t.name]),
+						);
+						console.log("[InfraNodus] topic-name map", {
+							action: actionMessage,
+							selectedClusters,
+							topicCount: allTopicNames.length,
+							sample: allTopicNames.slice(0, 5),
+						});
 						const graphToUse = this._clipboardProvider.buildScopedDotGraph({
 							nodes: selectedWords,
 							topics: selectedClusters,
+							topicNamesById,
 						});
 						const contentToUse = statementsToUse.join("\n\n");
 						console.log("[InfraNodus] AI action posting prompt", {
@@ -701,6 +714,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						if (graphToUse) {
 							const adviceRequestId = `${Date.now()}-${actionMessage}`;
 							const prefix = this.generatePrefix(actionMessage);
+							// Topic-name labelling: include AI-generated topic names
+							// (or fallback) when topics are involved — either an
+							// explicit cluster selection, or the whole-graph
+							// "graph summary" action which targets all topics.
 							let contentWithPrefix = `${prefix}\n\n${graphToUse}`;
 							if (contentToUse) {
 								contentWithPrefix += `\n\nAnd take this context into account:\n\n${contentToUse}`;
@@ -1916,44 +1933,68 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 	// not depend on _selectedNodes / _selectedClusters propagation.
 	//   - topics-only selection  → keep clusters whose key is in `topics`
 	//   - nodes selection        → keep cluster lines mentioning any node
-	//   - nothing selected       → full original DOT (graph outline)
+	//   - nothing selected       → full original DOT (all clusters)
+	// When topicNamesById is provided, each cluster is prefixed with its
+	// topic name as a header line so the AI sees `Topic Name:` before the
+	// edge list of that cluster.
 	public buildScopedDotGraph({
 		nodes,
 		topics,
+		topicNamesById,
 	}: {
 		nodes: string[];
 		topics: string[];
+		topicNamesById?: Map<string, string>;
 	}): string {
 		const fullDot = this._currentDotGraph;
 		if (!this._currentDotGraphByCluster) return fullDot;
 
+		const labelCluster = (key: string, lines: string[]): string => {
+			const name = topicNamesById?.get(String(key));
+			return name ? `${name}:\n${lines.join("\n")}` : lines.join("\n");
+		};
+
+		const allKeys = Object.keys(this._currentDotGraphByCluster);
+
 		if (nodes.length === 0 && topics.length > 0) {
 			const topicSet = new Set(topics.map(String));
-			const matched = Object.keys(this._currentDotGraphByCluster)
+			const matched = allKeys
 				.filter((key) => topicSet.has(String(key)))
-				.map((key) => this._currentDotGraphByCluster![key])
-				.filter((cluster) => Array.isArray(cluster));
-			const dot = matched
-				.map((cluster: any[]) => cluster.join("\n"))
-				.join("\n");
+				.filter((key) => Array.isArray(this._currentDotGraphByCluster![key]))
+				.map((key) =>
+					labelCluster(key, this._currentDotGraphByCluster![key] as string[]),
+				);
+			const dot = matched.join("\n\n");
 			return dot || fullDot;
 		}
 
 		if (nodes.length > 0) {
 			const containsAny = (line: string): boolean =>
 				nodes.some((n) => n && line.includes(n));
-			const newClusters: string[][] = [];
-			Object.keys(this._currentDotGraphByCluster).forEach((key) => {
+			const labelledClusters: string[] = [];
+			allKeys.forEach((key) => {
 				const cluster = this._currentDotGraphByCluster![key];
 				if (!Array.isArray(cluster)) return;
-				const filtered = cluster.filter((line: string) => containsAny(line));
-				if (filtered.length > 0) newClusters.push(filtered);
+				const filtered = (cluster as string[]).filter((line) =>
+					containsAny(line),
+				);
+				if (filtered.length > 0) {
+					labelledClusters.push(labelCluster(key, filtered));
+				}
 			});
-			const dot = newClusters.map((c) => c.join("\n")).join("\n");
+			const dot = labelledClusters.join("\n\n");
 			return dot || fullDot;
 		}
 
-		return fullDot;
+		// No selection → full graph, but still label each cluster so the
+		// AI can attribute edges to topics in the prompt.
+		const labelledFull = allKeys
+			.filter((key) => Array.isArray(this._currentDotGraphByCluster![key]))
+			.map((key) =>
+				labelCluster(key, this._currentDotGraphByCluster![key] as string[]),
+			)
+			.join("\n\n");
+		return labelledFull || fullDot;
 	}
 
 	public updateGraphAndStatements({
@@ -1977,6 +2018,30 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 
 	public getCurrentGraphObject(): any {
 		return this._currentGraphObject;
+	}
+
+	// Returns [{ id, name }] for clusters in the current graph, preferring
+	// the InfraNodus AI-generated `aiName` and falling back to the top three
+	// node names (matches the LOAD_JSON topicNames mapping).
+	public getTopicNames(): Array<{ id: string; name: string }> {
+		const topClusters =
+			this._currentGraphObject?.attributes?.top_clusters || [];
+		if (!Array.isArray(topClusters)) return [];
+		return topClusters
+			.map((topic: any) => {
+				if (topic?.aiName) {
+					const name = String(topic.aiName).split(". ").pop() || topic.aiName;
+					return { id: String(topic.community), name };
+				}
+				const fallback = (topic?.nodes || [])
+					.map((node: any) => node?.nodeName)
+					.filter(Boolean)
+					.slice(0, 3)
+					.join(" ");
+				if (!fallback) return null;
+				return { id: String(topic?.community), name: fallback };
+			})
+			.filter(Boolean) as Array<{ id: string; name: string }>;
 	}
 
 	public getCurrentStatementsObject(): any[] {
