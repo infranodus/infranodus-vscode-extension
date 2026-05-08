@@ -685,7 +685,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					});
 
 					setTimeout(() => {
-						const graphToUse = this._clipboardProvider.getCurrentGraph();
+						// Build a selection-scoped DOT graph from the meta-derived
+						// selection so the prompt matches what the user has highlighted
+						// (concepts subgraph / topic clusters / full graph if nothing).
+						const graphToUse = this._clipboardProvider.buildScopedDotGraph({
+							nodes: selectedWords,
+							topics: selectedClusters,
+						});
 						const contentToUse = statementsToUse.join("\n\n");
 						console.log("[InfraNodus] AI action posting prompt", {
 							action: actionMessage,
@@ -729,7 +735,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 									action: actionMessage,
 									adviceRequestId,
 									requestMode,
-									prompt: prefix,
+									prompt: contentWithPrefix,
 									promptContext: contentToUse,
 									pinnedNodes: selectedWords,
 									topicsToProcess: selectedClusters,
@@ -1903,6 +1909,51 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 
 	public getCurrentGraph(): string {
 		return this._selectedDotGraph || this._currentDotGraph;
+	}
+
+	// Pure scoped-DOT builder driven by an explicit selection (e.g. from
+	// the EXTERNAL_ACTION meta envelope). Does not mutate state and does
+	// not depend on _selectedNodes / _selectedClusters propagation.
+	//   - topics-only selection  → keep clusters whose key is in `topics`
+	//   - nodes selection        → keep cluster lines mentioning any node
+	//   - nothing selected       → full original DOT (graph outline)
+	public buildScopedDotGraph({
+		nodes,
+		topics,
+	}: {
+		nodes: string[];
+		topics: string[];
+	}): string {
+		const fullDot = this._currentDotGraph;
+		if (!this._currentDotGraphByCluster) return fullDot;
+
+		if (nodes.length === 0 && topics.length > 0) {
+			const topicSet = new Set(topics.map(String));
+			const matched = Object.keys(this._currentDotGraphByCluster)
+				.filter((key) => topicSet.has(String(key)))
+				.map((key) => this._currentDotGraphByCluster![key])
+				.filter((cluster) => Array.isArray(cluster));
+			const dot = matched
+				.map((cluster: any[]) => cluster.join("\n"))
+				.join("\n");
+			return dot || fullDot;
+		}
+
+		if (nodes.length > 0) {
+			const containsAny = (line: string): boolean =>
+				nodes.some((n) => n && line.includes(n));
+			const newClusters: string[][] = [];
+			Object.keys(this._currentDotGraphByCluster).forEach((key) => {
+				const cluster = this._currentDotGraphByCluster![key];
+				if (!Array.isArray(cluster)) return;
+				const filtered = cluster.filter((line: string) => containsAny(line));
+				if (filtered.length > 0) newClusters.push(filtered);
+			});
+			const dot = newClusters.map((c) => c.join("\n")).join("\n");
+			return dot || fullDot;
+		}
+
+		return fullDot;
 	}
 
 	public updateGraphAndStatements({
