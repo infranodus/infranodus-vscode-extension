@@ -599,9 +599,22 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						break;
 
 					const statements = this._clipboardProvider.getCurrentStatements();
-					const selectedWords = this._clipboardProvider.getSelectedNodes();
-					const selectedClusters =
-						this._clipboardProvider.getSelectedClusters();
+					// Prefer the meta envelope's nodes/topics when present — it
+					// reflects the selection (manual or auto) at click time and
+					// avoids races with UPDATE_SELECTED_NODES propagation. Fall
+					// back to clipboard-provider state for legacy hosts.
+					const metaIsV1 =
+						externalActionMeta && externalActionMeta.version >= 1;
+					const selectedWords: string[] = metaIsV1
+						? Array.isArray(externalActionMeta.nodes)
+							? externalActionMeta.nodes.map(String)
+							: []
+						: this._clipboardProvider.getSelectedNodes();
+					const selectedClusters: string[] = metaIsV1
+						? Array.isArray(externalActionMeta.topics)
+							? externalActionMeta.topics.map(String)
+							: []
+						: this._clipboardProvider.getSelectedClusters();
 
 					const filesToInclude = this.generateCurrentUrl();
 
