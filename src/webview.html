@@ -11,6 +11,91 @@
             display: flex;
             flex-direction: column;
             height: calc(100vh - 14px);
+            --button-bg: rgba(68, 68, 68, 0.92);
+            --button-bg-hover: rgba(90, 90, 90, 0.95);
+            --button-border: rgba(255, 255, 255, 0.25);
+            --button-border-hover: rgba(255, 255, 255, 0.4);
+            --button-color: rgba(255, 255, 255, 0.85);
+            --tooltip-bg: rgba(50, 50, 50, 0.95);
+            --tooltip-color: rgba(255, 255, 255, 0.9);
+            --iframe-bg: #1f1f23;
+            --panel-bg: rgba(24, 24, 28, 0.92);
+            --panel-border: rgba(255, 255, 255, 0.10);
+            --panel-divider: rgba(255, 255, 255, 0.06);
+            --panel-text: rgba(255, 255, 255, 0.92);
+            --panel-text-muted: rgba(255, 255, 255, 0.78);
+            --panel-text-soft: rgba(255, 255, 255, 0.65);
+            --panel-body-text: rgba(255, 255, 255, 0.86);
+            --panel-headline: rgba(255, 255, 255, 0.96);
+            --panel-quote: rgba(255, 255, 255, 0.72);
+            --panel-shadow-1: rgba(0, 0, 0, 0.6);
+            --panel-shadow-2: rgba(0, 0, 0, 0.4);
+            --notice-bg: rgba(255, 255, 255, 0.04);
+            --code-bg: rgba(255, 255, 255, 0.08);
+            --pre-bg: rgba(0, 0, 0, 0.22);
+            --pre-border: rgba(255, 255, 255, 0.08);
+            --copy-bg: rgba(255, 255, 255, 0.08);
+            --copy-bg-hover: rgba(255, 255, 255, 0.13);
+            --copy-border: rgba(255, 255, 255, 0.14);
+            --copy-border-hover: rgba(255, 255, 255, 0.22);
+            --close-hover-bg: rgba(255, 255, 255, 0.08);
+            --close-hover-border: rgba(255, 255, 255, 0.12);
+            --close-hover-color: rgba(255, 255, 255, 0.95);
+            --next-bg: rgba(255, 255, 255, 0.08);
+            --next-border: rgba(255, 255, 255, 0.14);
+            --next-bg-hover: rgba(255, 255, 255, 0.14);
+            --next-border-hover: rgba(255, 255, 255, 0.24);
+            --badge-bg: rgba(120, 165, 255, 0.18);
+            --badge-border: rgba(120, 165, 255, 0.32);
+            --badge-color: #cfe0ff;
+            --link-color: #9fc0ff;
+            --quote-border: rgba(120, 165, 255, 0.45);
+            --scroll-thumb: rgba(255, 255, 255, 0.16);
+            --scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+        }
+
+        body[data-theme="light"] {
+            --button-bg: rgba(245, 245, 247, 0.95);
+            --button-bg-hover: rgba(232, 232, 236, 0.98);
+            --button-border: rgba(0, 0, 0, 0.15);
+            --button-border-hover: rgba(0, 0, 0, 0.28);
+            --button-color: rgba(40, 40, 44, 0.88);
+            --tooltip-bg: rgba(40, 40, 44, 0.95);
+            --tooltip-color: rgba(255, 255, 255, 0.95);
+            --iframe-bg: #ffffff;
+            --panel-bg: rgba(252, 252, 254, 0.94);
+            --panel-border: rgba(0, 0, 0, 0.10);
+            --panel-divider: rgba(0, 0, 0, 0.07);
+            --panel-text: rgba(20, 20, 24, 0.92);
+            --panel-text-muted: rgba(20, 20, 24, 0.72);
+            --panel-text-soft: rgba(20, 20, 24, 0.58);
+            --panel-body-text: rgba(20, 20, 24, 0.86);
+            --panel-headline: rgba(10, 10, 14, 0.96);
+            --panel-quote: rgba(20, 20, 24, 0.65);
+            --panel-shadow-1: rgba(0, 0, 0, 0.18);
+            --panel-shadow-2: rgba(0, 0, 0, 0.10);
+            --notice-bg: rgba(0, 0, 0, 0.04);
+            --code-bg: rgba(0, 0, 0, 0.06);
+            --pre-bg: rgba(0, 0, 0, 0.05);
+            --pre-border: rgba(0, 0, 0, 0.08);
+            --copy-bg: rgba(0, 0, 0, 0.05);
+            --copy-bg-hover: rgba(0, 0, 0, 0.09);
+            --copy-border: rgba(0, 0, 0, 0.12);
+            --copy-border-hover: rgba(0, 0, 0, 0.20);
+            --close-hover-bg: rgba(0, 0, 0, 0.06);
+            --close-hover-border: rgba(0, 0, 0, 0.10);
+            --close-hover-color: rgba(0, 0, 0, 0.85);
+            --next-bg: rgba(0, 0, 0, 0.05);
+            --next-border: rgba(0, 0, 0, 0.12);
+            --next-bg-hover: rgba(0, 0, 0, 0.09);
+            --next-border-hover: rgba(0, 0, 0, 0.20);
+            --badge-bg: rgba(60, 110, 220, 0.14);
+            --badge-border: rgba(60, 110, 220, 0.30);
+            --badge-color: #2a55b8;
+            --link-color: #2a55b8;
+            --quote-border: rgba(60, 110, 220, 0.40);
+            --scroll-thumb: rgba(0, 0, 0, 0.18);
+            --scroll-thumb-hover: rgba(0, 0, 0, 0.30);
         }
         .button-container {
             position: absolute;
@@ -25,9 +110,9 @@
             width: 32px;
             height: 32px;
             border-radius: 6px;
-            background: rgba(68, 68, 68, 0.92);
-            border: 1px solid rgba(255, 255, 255, 0.25);
-            color: rgba(255, 255, 255, 0.85);
+            background: var(--button-bg);
+            border: 1px solid var(--button-border);
+            color: var(--button-color);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -36,16 +121,16 @@
             transition: all 0.2s ease;
         }
         .overlay-button:hover {
-            background: rgba(90, 90, 90, 0.95);
-            border-color: rgba(255, 255, 255, 0.4);
+            background: var(--button-bg-hover);
+            border-color: var(--button-border-hover);
             transform: translateY(-2px);
         }
         .overlay-button::before {
             content: attr(data-tooltip);
             position: absolute;
             left: 50px;
-            background: rgba(50, 50, 50, 0.95);
-            color: rgba(255, 255, 255, 0.9);
+            background: var(--tooltip-bg);
+            color: var(--tooltip-color);
             padding: 6px 12px;
             border-radius: 4px;
             font-size: 12px;
@@ -109,7 +194,7 @@
             width: 100%;
             height: 100%;
             border: none;
-            background: white;
+            background: var(--iframe-bg);
         }
 
         .prompt-panel {
@@ -120,16 +205,16 @@
             max-height: 40vh;
             display: none;
             flex-direction: column;
-            background: rgba(24, 24, 28, 0.92);
+            background: var(--panel-bg);
             backdrop-filter: blur(14px);
             -webkit-backdrop-filter: blur(14px);
-            border: 1px solid rgba(255, 255, 255, 0.10);
+            border: 1px solid var(--panel-border);
             border-radius: 10px;
-            box-shadow: 0 16px 40px -18px rgba(0, 0, 0, 0.6),
-                        0 6px 16px -8px rgba(0, 0, 0, 0.4);
+            box-shadow: 0 16px 40px -18px var(--panel-shadow-1),
+                        0 6px 16px -8px var(--panel-shadow-2);
             overflow: hidden;
             z-index: 1100;
-            color: rgba(255, 255, 255, 0.92);
+            color: var(--panel-text);
             transform: translateY(-6px);
             opacity: 0;
             transition: transform 0.18s ease, opacity 0.18s ease;
@@ -146,7 +231,7 @@
             align-items: center;
             justify-content: space-between;
             padding: 8px 10px 8px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+            border-bottom: 1px solid var(--panel-divider);
             flex-shrink: 0;
         }
 
@@ -158,7 +243,7 @@
             font-weight: 600;
             letter-spacing: 0.05em;
             text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.78);
+            color: var(--panel-text-muted);
         }
 
         .prompt-panel-badge {
@@ -166,9 +251,9 @@
             align-items: center;
             padding: 1px 8px;
             border-radius: 999px;
-            background: rgba(120, 165, 255, 0.18);
-            border: 1px solid rgba(120, 165, 255, 0.32);
-            color: #cfe0ff;
+            background: var(--badge-bg);
+            border: 1px solid var(--badge-border);
+            color: var(--badge-color);
             font-size: 10px;
             font-weight: 600;
             letter-spacing: 0.02em;
@@ -180,9 +265,9 @@
             align-items: center;
             padding: 1px 7px;
             border-radius: 999px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            color: rgba(255, 255, 255, 0.86);
+            background: var(--next-bg);
+            border: 1px solid var(--next-border);
+            color: var(--panel-body-text);
             font-size: 10px;
             font-weight: 600;
             letter-spacing: 0.02em;
@@ -191,8 +276,8 @@
         }
 
         .prompt-panel-next:hover {
-            background: rgba(255, 255, 255, 0.14);
-            border-color: rgba(255, 255, 255, 0.24);
+            background: var(--next-bg-hover);
+            border-color: var(--next-border-hover);
         }
 
         .prompt-panel-close {
@@ -201,7 +286,7 @@
             border-radius: 5px;
             background: transparent;
             border: 1px solid transparent;
-            color: rgba(255, 255, 255, 0.65);
+            color: var(--panel-text-soft);
             cursor: pointer;
             display: flex;
             align-items: center;
@@ -210,9 +295,9 @@
         }
 
         .prompt-panel-close:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.12);
-            color: rgba(255, 255, 255, 0.95);
+            background: var(--close-hover-bg);
+            border-color: var(--close-hover-border);
+            color: var(--close-hover-color);
         }
 
         .prompt-panel-close svg {
@@ -235,10 +320,10 @@
             word-break: break-word;
             overflow-y: auto;
             overflow-x: auto;
-            color: rgba(255, 255, 255, 0.86);
+            color: var(--panel-body-text);
             font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
             scrollbar-width: thin;
-            scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+            scrollbar-color: var(--scroll-thumb) transparent;
         }
 
         .prompt-panel-body::-webkit-scrollbar {
@@ -249,11 +334,11 @@
             background: transparent;
         }
         .prompt-panel-body::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.12);
+            background: var(--scroll-thumb);
             border-radius: 999px;
         }
         .prompt-panel-body::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.24);
+            background: var(--scroll-thumb-hover);
         }
 
         .prompt-panel-body.markdown {
@@ -265,7 +350,7 @@
         .prompt-panel-body.markdown h2,
         .prompt-panel-body.markdown h3 {
             margin: 0 0 8px 0;
-            color: rgba(255, 255, 255, 0.96);
+            color: var(--panel-headline);
             line-height: 1.25;
         }
 
@@ -293,7 +378,7 @@
         .prompt-panel-body.markdown code {
             padding: 1px 4px;
             border-radius: 4px;
-            background: rgba(255, 255, 255, 0.08);
+            background: var(--code-bg);
             font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
             font-size: 0.95em;
         }
@@ -301,8 +386,8 @@
         .prompt-panel-body.markdown pre {
             padding: 9px 10px;
             border-radius: 7px;
-            background: rgba(0, 0, 0, 0.22);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            background: var(--pre-bg);
+            border: 1px solid var(--pre-border);
             overflow-x: auto;
         }
 
@@ -313,12 +398,12 @@
 
         .prompt-panel-body.markdown blockquote {
             padding-left: 10px;
-            border-left: 2px solid rgba(120, 165, 255, 0.45);
-            color: rgba(255, 255, 255, 0.72);
+            border-left: 2px solid var(--quote-border);
+            color: var(--panel-quote);
         }
 
         .prompt-panel-body.markdown a {
-            color: #9fc0ff;
+            color: var(--link-color);
             text-decoration: none;
         }
 
@@ -332,13 +417,13 @@
             justify-content: flex-end;
             gap: 5px;
             padding: 6px 8px 8px 8px;
-            border-top: 1px solid rgba(255, 255, 255, 0.06);
+            border-top: 1px solid var(--panel-divider);
             flex-shrink: 0;
         }
 
         .prompt-panel-feedback {
             font-size: 11px;
-            color: rgba(255, 255, 255, 0.65);
+            color: var(--panel-text-soft);
             opacity: 0;
             transition: opacity 0.2s ease;
         }
@@ -350,11 +435,11 @@
         .prompt-panel-notice {
             display: none;
             padding: 7px 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            color: rgba(255, 255, 255, 0.72);
+            border-bottom: 1px solid var(--panel-divider);
+            color: var(--panel-quote);
             font-size: 11px;
             line-height: 1.35;
-            background: rgba(255, 255, 255, 0.04);
+            background: var(--notice-bg);
         }
 
         .prompt-panel-notice.visible {
@@ -381,9 +466,9 @@
             padding: 4px 7px;
             font-size: 11px;
             border-radius: 6px;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            color: rgba(255, 255, 255, 0.92);
+            background: var(--copy-bg);
+            border: 1px solid var(--copy-border);
+            color: var(--panel-text);
             cursor: pointer;
             flex: 0 0 auto;
             white-space: nowrap;
@@ -391,8 +476,8 @@
         }
 
         .prompt-panel-copy:hover {
-            background: rgba(255, 255, 255, 0.13);
-            border-color: rgba(255, 255, 255, 0.22);
+            background: var(--copy-bg-hover);
+            border-color: var(--copy-border-hover);
         }
 
         .prompt-panel-copy:active {
@@ -520,7 +605,20 @@
     </div>
     <script>
         const vscode = acquireVsCodeApi();
-        
+
+        function applyTheme(theme) {
+            const resolved = theme === 'dark' ? 'dark' : 'light';
+            document.body.setAttribute('data-theme', resolved);
+        }
+
+        // Apply persisted theme as early as possible to avoid a flash of wrong-theme buttons
+        try {
+            const earlyState = vscode.getState();
+            applyTheme(earlyState && earlyState.infraNodusTheme === 'dark' ? 'dark' : 'light');
+        } catch (e) {
+            applyTheme('light');
+        }
+
         console.log("Activated InfraNodus Webview iFrame");
         document.addEventListener('DOMContentLoaded', (event) => {
             // Set up button click handlers
@@ -989,9 +1087,14 @@
                             break;
                     }
                 } else if (message.type === 'SET_IFRAME_URL') {
-                    const iframeUrl = message.url + '?iframe=true&app=vscode' + (message.userId ? '&user=' + message.userId : '');
-                    // Store the URL using vscode state
-                    vscode.setState({ infraNodusIframeUrl: iframeUrl });
+                    const theme = message.theme === 'dark' || message.theme === 'light' ? message.theme : 'light';
+                    applyTheme(theme);
+                    const iframeUrl = message.url
+                        + '?iframe=true&app=vscode'
+                        + '&theme=' + theme
+                        + (message.userId ? '&user=' + message.userId : '');
+                    // Store the URL and theme using vscode state
+                    vscode.setState({ infraNodusIframeUrl: iframeUrl, infraNodusTheme: theme });
                     document.getElementById('graphFrame').src = iframeUrl;
                 }
             });
@@ -1051,8 +1154,13 @@
         // console.log("Initial state:", state);
         const storedIframeUrl = state?.infraNodusIframeUrl;
         const storedGraphData = state?.graphData;
+        const storedTheme = state?.infraNodusTheme;
         let hasRestoredData = false;  // Flag to prevent multiple restorations
-        
+
+        if (storedTheme) {
+            applyTheme(storedTheme);
+        }
+
         if (storedIframeUrl) {
             // console.log("Setting iframe URL:", storedIframeUrl);
             document.getElementById('graphFrame').src = storedIframeUrl;

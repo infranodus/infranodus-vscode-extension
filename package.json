@@ -64,6 +64,21 @@
 					"default": "https://graph.infranodus.com",
 					"description": "InfraNodus Graph URL (default: https://graph.infranodus.com)"
 				},
+				"infranodus-graph-view.theme": {
+					"type": "string",
+					"default": "auto",
+					"enum": [
+						"auto",
+						"dark",
+						"light"
+					],
+					"enumItemLabels": [
+						"Auto (follow IDE theme)",
+						"Dark",
+						"Light"
+					],
+					"description": "Color theme for the InfraNodus graph view and extension UI. Auto follows the current VS Code color theme."
+				},
 				"infranodus-graph-view.graphPrefix": {
 					"type": "string",
 					"default": "Use the following knowledge graph data to make your response more precise",

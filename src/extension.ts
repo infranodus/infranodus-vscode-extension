@@ -330,6 +330,19 @@ export function activate(context: vscode.ExtensionContext) {
 				}
 			},
 		),
+		vscode.workspace.onDidChangeConfiguration((event) => {
+			if (event.affectsConfiguration("infranodus-graph-view.theme")) {
+				provider.refreshTheme();
+			}
+		}),
+		vscode.window.onDidChangeActiveColorTheme(() => {
+			const setting = vscode.workspace
+				.getConfiguration("infranodus-graph-view")
+				.get<string>("theme");
+			if (!setting || setting === "auto") {
+				provider.refreshTheme();
+			}
+		}),
 		vscode.commands.registerCommand(
 			"infranodus-graph-view.visualizeRepoDiffAsGraph",
 			async (uri?: vscode.Uri) => {
@@ -1568,6 +1581,35 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		);
 	}
 
+	private getThemeSetting(): "auto" | "dark" | "light" {
+		const value = vscode.workspace
+			.getConfiguration("infranodus-graph-view")
+			.get<string>("theme");
+		if (value === "dark" || value === "light" || value === "auto") {
+			return value;
+		}
+		return "auto";
+	}
+
+	public getResolvedTheme(): "dark" | "light" {
+		const setting = this.getThemeSetting();
+		if (setting === "dark" || setting === "light") {
+			return setting;
+		}
+		const kind = vscode.window.activeColorTheme?.kind;
+		if (
+			kind === vscode.ColorThemeKind.Dark ||
+			kind === vscode.ColorThemeKind.HighContrast
+		) {
+			return "dark";
+		}
+		return "light";
+	}
+
+	public async refreshTheme() {
+		await this.initializeWebview();
+	}
+
 	private _getHtmlForWebview(webview: vscode.Webview) {
 		const htmlPath = path.join(
 			this._extensionUri.fsPath,
@@ -1788,8 +1830,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		const iframeUrl = this.getIframeUrl();
+		const theme = this.getResolvedTheme();
 		this._context.globalState.update("infraNodusIframeUrl", iframeUrl);
 		this._context.globalState.update("infraNodusUserId", currentUser);
+		this._context.globalState.update("infraNodusTheme", theme);
 
 		// Send the URL to the webview
 		if (this._view) {
@@ -1797,6 +1841,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				type: "SET_IFRAME_URL",
 				url: iframeUrl,
 				userId: currentUser,
+				theme,
 			});
 		}
 	}
