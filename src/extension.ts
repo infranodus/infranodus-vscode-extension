@@ -791,6 +791,59 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "exportAnalyzedContextToInfraNodus":
 					await this.exportAnalyzedContextToInfraNodus();
 					return;
+				case "requestExportPreview": {
+					const previewText =
+						this._clipboardProvider.getCurrentContent() || "";
+					const defaultName = this.getDefaultExportGraphName();
+					if (!previewText) {
+						this._view?.webview.postMessage({
+							command: "exportPreviewUnavailable",
+							reason:
+								"No analyzed context available yet. Analyze a document first.",
+						});
+						vscode.window.showInformationMessage(
+							"No analyzed context available yet. Analyze a document first.",
+						);
+						return;
+					}
+					this._view?.webview.postMessage({
+						command: "showExportPreview",
+						defaultName,
+						text: previewText,
+					});
+					return;
+				}
+				case "submitExportToInfraNodus": {
+					const submitName = (message.name || "").toString().trim();
+					const submitText = (message.text || "").toString();
+					if (!submitName) {
+						this._view?.webview.postMessage({
+							command: "exportToInfraNodusResult",
+							success: false,
+							error: "Graph name is required",
+						});
+						return;
+					}
+					if (!submitText.trim()) {
+						this._view?.webview.postMessage({
+							command: "exportToInfraNodusResult",
+							success: false,
+							error: "Cannot export empty content",
+						});
+						return;
+					}
+					const result = await this.exportTextToInfraNodus({
+						name: submitName,
+						text: submitText,
+					});
+					this._view?.webview.postMessage({
+						command: "exportToInfraNodusResult",
+						success: result.success,
+						error: result.error,
+						graphName: submitName,
+					});
+					return;
+				}
 				case "copyGraphToClipboard":
 					const graphContent = this._clipboardProvider.getCurrentGraph();
 					if (graphContent) {
@@ -1083,32 +1136,25 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		);
 	}
 
-	public async exportAnalyzedContextToInfraNodus() {
-		const text = this._clipboardProvider.getCurrentContent();
-		if (!text) {
-			vscode.window.showInformationMessage(
-				"No analyzed context available yet. Analyze a document first.",
-			);
-			return;
-		}
+	public getDefaultExportGraphName(): string {
+		return (
+			this._clipboardProvider.getCurrentUrl()?.split(/[\\/]/).pop() ||
+			"vscode-context"
+		);
+	}
 
-		const graphName = await vscode.window.showInputBox({
-			prompt: "Enter the InfraNodus graph name to save this context",
-			placeHolder: "my-vscode-context",
-			value:
-				this._clipboardProvider.getCurrentUrl()?.split(/[\\/]/).pop() ||
-				"vscode-context",
-			ignoreFocusOut: true,
-		});
-
-		if (!graphName) {
-			return;
-		}
-
+	public async exportTextToInfraNodus({
+		name,
+		text,
+	}: {
+		name: string;
+		text: string;
+	}): Promise<{ success: boolean; error?: string }> {
 		const apiKey = await this.getApiKey();
 		if (!apiKey) {
-			vscode.window.showErrorMessage("Please set your API key first");
-			return;
+			const errorMessage = "Please set your API key first";
+			vscode.window.showErrorMessage(errorMessage);
+			return { success: false, error: errorMessage };
 		}
 
 		const formattedApiKey = apiKey.startsWith("Bearer ")
@@ -1116,7 +1162,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			: `Bearer ${apiKey}`;
 
 		const textRequest = {
-			name: graphName,
+			name,
 			text,
 			aiTopics: true,
 			stopwords: this.getInfraNodusStopwords(),
@@ -1130,7 +1176,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		try {
 			this._view?.webview.postMessage({ command: "showLoading" });
 			const response = await axios.post(
-				`${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(graphName)}`,
+				`${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(name)}`,
 				textRequest,
 				{
 					headers: {
@@ -1153,24 +1199,42 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			}
 
 			vscode.window.showInformationMessage(
-				`Analyzed context exported to InfraNodus graph "${graphName}".`,
+				`Analyzed context exported to InfraNodus graph "${name}".`,
 			);
+			return { success: true };
 		} catch (error) {
 			const message = getInfraNodusRequestErrorMessage(error);
-			if (axios.isAxiosError(error)) {
-				vscode.window.showErrorMessage(
-					`Could not export context to InfraNodus: ${message}`,
-				);
-				logInfraNodusRequestError(error);
-				return;
-			}
 			logInfraNodusRequestError(error);
 			vscode.window.showErrorMessage(
 				`Could not export context to InfraNodus: ${message}`,
 			);
+			return { success: false, error: message };
 		} finally {
 			this._view?.webview.postMessage({ command: "hideLoading" });
 		}
+	}
+
+	public async exportAnalyzedContextToInfraNodus() {
+		const text = this._clipboardProvider.getCurrentContent();
+		if (!text) {
+			vscode.window.showInformationMessage(
+				"No analyzed context available yet. Analyze a document first.",
+			);
+			return;
+		}
+
+		const graphName = await vscode.window.showInputBox({
+			prompt: "Enter the InfraNodus graph name to save this context",
+			placeHolder: "my-vscode-context",
+			value: this.getDefaultExportGraphName(),
+			ignoreFocusOut: true,
+		});
+
+		if (!graphName) {
+			return;
+		}
+
+		await this.exportTextToInfraNodus({ name: graphName, text });
 	}
 
 	public async processDocument(document?: vscode.TextDocument) {

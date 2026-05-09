@@ -493,6 +493,102 @@
             stroke-linecap: round;
             stroke-linejoin: round;
         }
+
+        .export-preview-panel {
+            width: min(480px, calc(100% - 92px));
+            max-height: 70vh;
+        }
+
+        .export-preview-name {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            padding: 10px 12px 6px 12px;
+            border-bottom: 1px solid var(--panel-divider);
+        }
+
+        .export-preview-name label {
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: var(--panel-text-muted);
+        }
+
+        .export-preview-name input {
+            box-sizing: border-box;
+            width: 100%;
+            padding: 6px 8px;
+            font-size: 12px;
+            border-radius: 5px;
+            background: var(--copy-bg);
+            border: 1px solid var(--copy-border);
+            color: var(--panel-text);
+            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+            outline: none;
+            transition: border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .export-preview-name input:focus {
+            border-color: var(--copy-border-hover);
+            background: var(--copy-bg-hover);
+        }
+
+        .export-preview-text {
+            box-sizing: border-box;
+            flex: 1 1 auto;
+            min-height: 160px;
+            margin: 0;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            background: transparent;
+            border: none;
+            outline: none;
+            resize: none;
+            color: var(--panel-body-text);
+            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
+            scrollbar-width: thin;
+            scrollbar-color: var(--scroll-thumb) transparent;
+            white-space: pre-wrap;
+        }
+
+        .export-preview-text::-webkit-scrollbar {
+            width: 4px;
+        }
+        .export-preview-text::-webkit-scrollbar-thumb {
+            background: var(--scroll-thumb);
+            border-radius: 999px;
+        }
+        .export-preview-text::-webkit-scrollbar-thumb:hover {
+            background: var(--scroll-thumb-hover);
+        }
+
+        .export-preview-submit {
+            background: var(--badge-bg);
+            border-color: var(--badge-border);
+            color: var(--badge-color);
+        }
+
+        .export-preview-submit:hover {
+            background: var(--badge-bg);
+            border-color: var(--badge-border);
+            filter: brightness(1.1);
+        }
+
+        .export-preview-submit[disabled] {
+            opacity: 0.55;
+            cursor: progress;
+        }
+
+        .prompt-panel-feedback.error {
+            color: #ff7d7d;
+            opacity: 1;
+        }
+
+        body[data-theme="light"] .prompt-panel-feedback.error {
+            color: #c0392b;
+        }
     </style>
 </head>
 <body>
@@ -506,6 +602,14 @@
         <button id="copyButton" class="overlay-button" data-tooltip="Copy Graph or Selection to Clipboard">
             <svg viewBox="0 0 24 24">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+            </svg>
+        </button>
+
+        <button id="exportButton" class="overlay-button" data-tooltip="Export Analyzed Content to InfraNodus">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v12"/>
+                <path d="m7 8 5-5 5 5"/>
+                <path d="M5 21h14"/>
             </svg>
         </button>
 
@@ -602,6 +706,39 @@
                 </button>
             </div>
         </div>
+
+        <div id="exportPreviewPanel" class="prompt-panel export-preview-panel" role="dialog" aria-label="Export to InfraNodus">
+            <div class="prompt-panel-header">
+                <div class="prompt-panel-title">
+                    Export to InfraNodus
+                </div>
+                <button id="exportPreviewClose" class="prompt-panel-close" title="Close">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <line x1="6" y1="6" x2="18" y2="18"/>
+                        <line x1="18" y1="6" x2="6" y2="18"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="export-preview-name">
+                <label for="exportPreviewName">Graph name</label>
+                <input id="exportPreviewName" type="text" placeholder="my-vscode-context" autocomplete="off" spellcheck="false" />
+            </div>
+            <textarea id="exportPreviewText" class="export-preview-text" spellcheck="false" placeholder="Content to export..."></textarea>
+            <div class="prompt-panel-footer">
+                <span id="exportPreviewFeedback" class="prompt-panel-feedback"></span>
+                <button id="exportPreviewCancel" class="prompt-panel-copy" title="Cancel">
+                    Cancel
+                </button>
+                <button id="exportPreviewSubmit" class="prompt-panel-copy export-preview-submit" title="Submit to InfraNodus">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+                        <path d="M12 3v12"/>
+                        <path d="m7 8 5-5 5 5"/>
+                        <path d="M5 21h14"/>
+                    </svg>
+                    Submit
+                </button>
+            </div>
+        </div>
     </div>
     <script>
         const vscode = acquireVsCodeApi();
@@ -630,9 +767,15 @@
             });
 
             document.getElementById('copyButton').addEventListener('click', () => {
-                
+
                 vscode.postMessage({
                     command: 'copyGraphToClipboard'
+                });
+            });
+
+            document.getElementById('exportButton').addEventListener('click', () => {
+                vscode.postMessage({
+                    command: 'requestExportPreview'
                 });
             });
 
@@ -666,6 +809,14 @@
             const contextPanelCopy = document.getElementById('contextPanelCopy');
             const contextPanelExport = document.getElementById('contextPanelExport');
             const contextPanelFeedback = document.getElementById('contextPanelFeedback');
+            const exportPreviewPanel = document.getElementById('exportPreviewPanel');
+            const exportPreviewName = document.getElementById('exportPreviewName');
+            const exportPreviewText = document.getElementById('exportPreviewText');
+            const exportPreviewClose = document.getElementById('exportPreviewClose');
+            const exportPreviewCancel = document.getElementById('exportPreviewCancel');
+            const exportPreviewSubmit = document.getElementById('exportPreviewSubmit');
+            const exportPreviewFeedback = document.getElementById('exportPreviewFeedback');
+            let exportPreviewSubmitting = false;
             let currentPromptText = '';
             let currentResponseTexts = [];
             let currentResponseIndex = 0;
@@ -941,12 +1092,70 @@
                 vscode.postMessage({ command: 'exportAnalyzedContextToInfraNodus' });
             });
 
+            function setExportPreviewFeedback(text, isError) {
+                exportPreviewFeedback.textContent = text || '';
+                exportPreviewFeedback.classList.toggle('error', !!isError);
+                exportPreviewFeedback.classList.toggle('visible', !!text);
+            }
+
+            function setExportPreviewSubmitting(value) {
+                exportPreviewSubmitting = !!value;
+                exportPreviewSubmit.disabled = exportPreviewSubmitting;
+                if (exportPreviewSubmitting) {
+                    setExportPreviewFeedback('Exporting…', false);
+                }
+            }
+
+            function showExportPreview({ defaultName, text }) {
+                promptPanel.classList.remove('visible');
+                contextPanel.classList.remove('visible');
+                exportPreviewName.value = defaultName || 'vscode-context';
+                exportPreviewText.value = text || '';
+                setExportPreviewFeedback('', false);
+                setExportPreviewSubmitting(false);
+                exportPreviewPanel.classList.add('visible');
+                setTimeout(() => exportPreviewName.focus(), 30);
+            }
+
+            function hideExportPreview() {
+                exportPreviewPanel.classList.remove('visible');
+                setExportPreviewSubmitting(false);
+            }
+
+            exportPreviewClose.addEventListener('click', hideExportPreview);
+            exportPreviewCancel.addEventListener('click', hideExportPreview);
+
+            exportPreviewSubmit.addEventListener('click', () => {
+                if (exportPreviewSubmitting) return;
+                const name = (exportPreviewName.value || '').trim();
+                const text = exportPreviewText.value || '';
+                if (!name) {
+                    setExportPreviewFeedback('Graph name is required', true);
+                    exportPreviewName.focus();
+                    return;
+                }
+                if (!text.trim()) {
+                    setExportPreviewFeedback('Cannot export empty content', true);
+                    exportPreviewText.focus();
+                    return;
+                }
+                setExportPreviewSubmitting(true);
+                vscode.postMessage({
+                    command: 'submitExportToInfraNodus',
+                    name,
+                    text
+                });
+            });
+
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && promptPanel.classList.contains('visible')) {
                     hidePromptPanel();
                 }
                 if (e.key === 'Escape' && contextPanel.classList.contains('visible')) {
                     hideContextPanel();
+                }
+                if (e.key === 'Escape' && exportPreviewPanel.classList.contains('visible')) {
+                    hideExportPreview();
                 }
             });
 
@@ -1144,6 +1353,32 @@
                         showContextPanel({
                             contextText: message.contextText
                         });
+                        break;
+                    case 'showExportPreview':
+                        showExportPreview({
+                            defaultName: message.defaultName,
+                            text: message.text
+                        });
+                        break;
+                    case 'exportPreviewUnavailable':
+                        if (exportPreviewPanel.classList.contains('visible')) {
+                            setExportPreviewSubmitting(false);
+                            setExportPreviewFeedback(message.reason || 'Nothing to export', true);
+                        }
+                        break;
+                    case 'exportToInfraNodusResult':
+                        setExportPreviewSubmitting(false);
+                        if (message.success) {
+                            setExportPreviewFeedback('Exported to InfraNodus', false);
+                            setTimeout(hideExportPreview, 900);
+                        } else {
+                            setExportPreviewFeedback(
+                                message.error
+                                    ? 'Export failed: ' + message.error
+                                    : 'Export failed',
+                                true
+                            );
+                        }
                         break;
                 }
             });
