@@ -260,6 +260,54 @@
             text-transform: none;
         }
 
+        .prompt-panel-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 8px 12px 0 12px;
+        }
+
+        .prompt-panel-meta:empty {
+            display: none;
+        }
+
+        .prompt-panel-scope {
+            font-size: 11px;
+            color: var(--panel-text-muted);
+            letter-spacing: 0.02em;
+        }
+
+        .prompt-panel-scope:empty {
+            display: none;
+        }
+
+        .prompt-panel-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+
+        .prompt-panel-chips:empty {
+            display: none;
+        }
+
+        .prompt-panel-chip {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--badge-bg);
+            border: 1px solid var(--badge-border);
+            color: var(--badge-color);
+            font-size: 10px;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
         .prompt-panel-next {
             display: none;
             align-items: center;
@@ -685,6 +733,10 @@
                     </svg>
                 </button>
             </div>
+            <div id="contextPanelMeta" class="prompt-panel-meta">
+                <div id="contextPanelScope" class="prompt-panel-scope"></div>
+                <div id="contextPanelChips" class="prompt-panel-chips"></div>
+            </div>
             <div id="contextPanelBody" class="prompt-panel-body"></div>
             <div class="prompt-panel-footer">
                 <span id="contextPanelFeedback" class="prompt-panel-feedback">Copied to clipboard</span>
@@ -809,6 +861,8 @@
             const contextPanelCopy = document.getElementById('contextPanelCopy');
             const contextPanelExport = document.getElementById('contextPanelExport');
             const contextPanelFeedback = document.getElementById('contextPanelFeedback');
+            const contextPanelChips = document.getElementById('contextPanelChips');
+            const contextPanelScope = document.getElementById('contextPanelScope');
             const exportPreviewPanel = document.getElementById('exportPreviewPanel');
             const exportPreviewName = document.getElementById('exportPreviewName');
             const exportPreviewText = document.getElementById('exportPreviewText');
@@ -1033,9 +1087,29 @@
                 promptPanel.classList.remove('visible');
             }
 
-            function showContextPanel({ contextText }) {
+            function showContextPanel({ contextText, chips, scopeLabel, emptyReason }) {
                 currentContextText = contextText || '';
-                contextPanelBody.textContent = currentContextText || 'No analyzed context available yet. Analyze a document first.';
+                if (currentContextText) {
+                    contextPanelBody.textContent = currentContextText;
+                } else if (emptyReason) {
+                    contextPanelBody.textContent = emptyReason;
+                } else {
+                    contextPanelBody.textContent = 'No analyzed context available yet. Analyze a document first.';
+                }
+
+                contextPanelScope.textContent = scopeLabel || '';
+
+                contextPanelChips.innerHTML = '';
+                const chipList = Array.isArray(chips) ? chips : [];
+                chipList.forEach((chip) => {
+                    if (!chip) return;
+                    const el = document.createElement('span');
+                    el.className = 'prompt-panel-chip';
+                    el.textContent = chip.label || '';
+                    if (chip.tooltip) el.title = chip.tooltip;
+                    contextPanelChips.appendChild(el);
+                });
+
                 promptPanel.classList.remove('visible');
                 contextPanel.classList.add('visible');
                 contextPanelBody.scrollTop = 0;
@@ -1351,7 +1425,10 @@
                         break;
                     case 'showAnalyzedContext':
                         showContextPanel({
-                            contextText: message.contextText
+                            contextText: message.contextText,
+                            chips: message.chips,
+                            scopeLabel: message.scopeLabel,
+                            emptyReason: message.emptyReason
                         });
                         break;
                     case 'showExportPreview':

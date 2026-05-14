@@ -632,13 +632,71 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					const filesToInclude = this.generateCurrentUrl();
 
 					if (actionMessage == "context" || actionMessage == "context_gap") {
-						const currentContent = this._clipboardProvider.getCurrentContent();
+						const fullContent = this._clipboardProvider.getCurrentContent();
+						const chips = this.buildContextChips();
+						const allTopicNames = this._clipboardProvider.getTopicNames();
+						const topicNamesById = new Map<string, string>(
+							allTopicNames.map((t) => [String(t.id), t.name]),
+						);
+
+						let contextText = fullContent;
+						let scopeLabel = "All analyzed context";
+						let emptyReason = "";
+
+						if (selectedWords.length > 0) {
+							const filtered = statements
+								.filter((s: any) =>
+									selectedWords.some((w: string) =>
+										String(s?.content ?? "")
+											.toLowerCase()
+											.includes(w.toLowerCase()),
+									),
+								)
+								.map((s: any) => s.content);
+							contextText = filtered.join("\n\n");
+							scopeLabel = `Concepts: ${selectedWords.join(", ")}`;
+							if (!contextText) {
+								emptyReason =
+									"No statements reference the selected concepts.";
+							}
+						} else if (selectedClusters.length > 0) {
+							const topicLabels = selectedClusters.map(
+								(id) => topicNamesById.get(String(id)) || `Topic ${id}`,
+							);
+							if (actionMessage == "context_gap") {
+								const top = this.getTopStatementsOfTopics({
+									statements,
+									selectedTopics: selectedClusters,
+								});
+								contextText = top.join("\n\n");
+								scopeLabel = `Gap top statements: ${topicLabels.join(", ")}`;
+								if (!contextText) {
+									emptyReason =
+										"No top statements found for the selected topics.";
+								}
+							} else {
+								const all = this.getAllStatementsOfTopics({
+									statements,
+									selectedTopics: selectedClusters,
+								});
+								contextText = all.join("\n\n");
+								scopeLabel = `Topics: ${topicLabels.join(", ")}`;
+								if (!contextText) {
+									emptyReason =
+										"No statements found in the selected topics.";
+								}
+							}
+						}
+
 						this._view?.webview.postMessage({
 							command: "showAnalyzedContext",
-							contextText: currentContent,
+							contextText,
+							chips,
+							scopeLabel,
+							emptyReason,
 						});
 
-						if (!currentContent) {
+						if (!fullContent) {
 							vscode.window.showInformationMessage(
 								"No analyzed context available yet. Analyze a document first.",
 							);
@@ -941,6 +999,28 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			: vscode.workspace.asRelativePath(
 					vscode.window.activeTextEditor?.document.uri.fsPath || "",
 				);
+	}
+
+	public buildContextChips(): { label: string; tooltip: string }[] {
+		const url = this._clipboardProvider.getCurrentUrl();
+		if (!url) return [];
+		if (url === "*") {
+			return [
+				{
+					label: "Workspace diff",
+					tooltip: "Git diff across the repository",
+				},
+			];
+		}
+		return url
+			.split(",")
+			.map((p) => p.trim())
+			.filter((p) => p.length > 0)
+			.map((p) => {
+				const segments = p.split(/[\\/]/).filter(Boolean);
+				const label = segments[segments.length - 1] || p;
+				return { label, tooltip: p };
+			});
 	}
 
 	public generatePrefix(action: string): string {
