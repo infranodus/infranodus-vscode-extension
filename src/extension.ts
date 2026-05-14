@@ -1777,11 +1777,19 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		return this._compressCodeBlocks(text);
 	}
 
+	public _stripMarkupTags(input: string): string {
+		return input
+			.replace(/<script[\s\S]*?<\/script>/gi, "")
+			.replace(/<style[\s\S]*?<\/style>/gi, "")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/&[a-z]+;/gi, " ");
+	}
+
 	public _extractParsedText(text: string, fileName: string): string {
 		const ext = (fileName.split(".").pop() || "").toLowerCase();
 
 		if (["md", "txt", "rst", "adoc", "org", "wiki", "log"].includes(ext)) {
-			return text;
+			return this._stripMarkupTags(text);
 		}
 
 		const extracted: string[] = [];
@@ -1838,7 +1846,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		// HTML-like files: extract visible text content
-		if (["html", "htm", "xml", "svg", "vue", "svelte"].includes(ext)) {
+		if (["html", "htm", "xml", "svg", "vue", "svelte", "jsx", "tsx"].includes(ext)) {
 			let cleaned = text
 				.replace(/<script[\s\S]*?<\/script>/gi, "")
 				.replace(/<style[\s\S]*?<\/style>/gi, "");
@@ -1872,7 +1880,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			}
 		}
 
-		return extracted.filter(Boolean).join("\n");
+		return this._stripMarkupTags(extracted.filter(Boolean).join("\n"));
 	}
 
 	private async initializeWebview() {
