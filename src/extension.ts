@@ -1785,6 +1785,40 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			.replace(/&[a-z]+;/gi, " ");
 	}
 
+	public _looksLikeNonProse(s: string): boolean {
+		// CSS class lists: all lowercase alphanumeric + hyphens/underscores/spaces, with hyphens
+		if (/^[a-z0-9_\-\s]+$/.test(s) && /-/.test(s) && /\s/.test(s)) return true;
+		// CSS color/function values: rgb(...), rgba(...), hsl(...), var(...), calc(...)
+		if (/^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient)\s*\(/i.test(s)) return true;
+		// Media queries / CSS sizes: contains px/em/rem/vh/vw with parens or commas, no sentence punctuation
+		if (/\b\d+(px|em|rem|vh|vw|%)\b/.test(s) && !/[.!?]/.test(s)) return true;
+		return false;
+	}
+
+	public _stripJsScaffolding(input: string): string {
+		return input
+			// import statements
+			.replace(/^\s*import\s+[\s\S]+?;?\s*$/gm, "")
+			// require declarations
+			.replace(/^\s*(const|let|var)\s+[\w{},\s]+\s*=\s*require\([^)]+\)\s*;?\s*$/gm, "")
+			// simple const string/number assignments (likely URLs, constants)
+			.replace(/^\s*(const|let|var)\s+\w+\s*=\s*['"`][^'"`]*['"`]\s*;?\s*$/gm, "")
+			// function declarations
+			.replace(/^\s*(export\s+default\s+)?(async\s+)?function\s+\w+\s*\([^)]*\)\s*\{?\s*$/gm, "")
+			// arrow function declarations
+			.replace(/^\s*(export\s+(default\s+)?)?(const|let|var)\s+\w+\s*=\s*(\([^)]*\)|\w+)\s*=>\s*\(?\s*$/gm, "")
+			// return statements opening
+			.replace(/^\s*return\s*\(?\s*$/gm, "")
+			// closing scaffolding: ); } });
+			.replace(/^\s*\)\s*;?\s*\}?\s*\)?\s*;?\s*$/gm, "")
+			.replace(/^\s*\}\s*\)?\s*;?\s*$/gm, "")
+			// module.exports
+			.replace(/^\s*module\.exports\s*=\s*[\w,\s{}]+\s*;?\s*$/gm, "")
+			.replace(/^\s*export\s+(default\s+)?[\w,\s{}]+\s*;?\s*$/gm, "")
+			// JSX block comments {/* ... */}
+			.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+	}
+
 	public _extractParsedText(text: string, fileName: string): string {
 		const ext = (fileName.split(".").pop() || "").toLowerCase();
 
@@ -1850,6 +1884,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			let cleaned = text
 				.replace(/<script[\s\S]*?<\/script>/gi, "")
 				.replace(/<style[\s\S]*?<\/style>/gi, "");
+			if (["jsx", "tsx"].includes(ext)) {
+				cleaned = this._stripJsScaffolding(cleaned);
+			}
 			const textContent = cleaned
 				.replace(/<[^>]+>/g, " ")
 				.replace(/&[a-z]+;/gi, " ")
@@ -1866,7 +1903,8 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			if (
 				content.includes(" ") &&
 				content.length > 10 &&
-				!/^https?:\/\//.test(content)
+				!/^https?:\/\//.test(content) &&
+				!this._looksLikeNonProse(content)
 			) {
 				extracted.push(content);
 			}
