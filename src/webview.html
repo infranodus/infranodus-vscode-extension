@@ -1,1373 +1,1644 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>InfraNodus Graph</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 10px 10px 14px 10px;
-            display: flex;
-            flex-direction: column;
-            height: calc(100vh - 14px);
-            --button-bg: rgba(68, 68, 68, 0.92);
-            --button-bg-hover: rgba(90, 90, 90, 0.95);
-            --button-border: rgba(255, 255, 255, 0.25);
-            --button-border-hover: rgba(255, 255, 255, 0.4);
-            --button-color: rgba(255, 255, 255, 0.85);
-            --tooltip-bg: rgba(50, 50, 50, 0.95);
-            --tooltip-color: rgba(255, 255, 255, 0.9);
-            --iframe-bg: #1f1f23;
-            --panel-bg: rgba(24, 24, 28, 0.92);
-            --panel-border: rgba(255, 255, 255, 0.10);
-            --panel-divider: rgba(255, 255, 255, 0.06);
-            --panel-text: rgba(255, 255, 255, 0.92);
-            --panel-text-muted: rgba(255, 255, 255, 0.78);
-            --panel-text-soft: rgba(255, 255, 255, 0.65);
-            --panel-body-text: rgba(255, 255, 255, 0.86);
-            --panel-headline: rgba(255, 255, 255, 0.96);
-            --panel-quote: rgba(255, 255, 255, 0.72);
-            --panel-shadow-1: rgba(0, 0, 0, 0.6);
-            --panel-shadow-2: rgba(0, 0, 0, 0.4);
-            --notice-bg: rgba(255, 255, 255, 0.04);
-            --code-bg: rgba(255, 255, 255, 0.08);
-            --pre-bg: rgba(0, 0, 0, 0.22);
-            --pre-border: rgba(255, 255, 255, 0.08);
-            --copy-bg: rgba(255, 255, 255, 0.08);
-            --copy-bg-hover: rgba(255, 255, 255, 0.13);
-            --copy-border: rgba(255, 255, 255, 0.14);
-            --copy-border-hover: rgba(255, 255, 255, 0.22);
-            --close-hover-bg: rgba(255, 255, 255, 0.08);
-            --close-hover-border: rgba(255, 255, 255, 0.12);
-            --close-hover-color: rgba(255, 255, 255, 0.95);
-            --next-bg: rgba(255, 255, 255, 0.08);
-            --next-border: rgba(255, 255, 255, 0.14);
-            --next-bg-hover: rgba(255, 255, 255, 0.14);
-            --next-border-hover: rgba(255, 255, 255, 0.24);
-            --badge-bg: rgba(120, 165, 255, 0.18);
-            --badge-border: rgba(120, 165, 255, 0.32);
-            --badge-color: #cfe0ff;
-            --link-color: #9fc0ff;
-            --quote-border: rgba(120, 165, 255, 0.45);
-            --scroll-thumb: rgba(255, 255, 255, 0.16);
-            --scroll-thumb-hover: rgba(255, 255, 255, 0.24);
-        }
-
-        body[data-theme="light"] {
-            --button-bg: rgba(245, 245, 247, 0.95);
-            --button-bg-hover: rgba(232, 232, 236, 0.98);
-            --button-border: rgba(0, 0, 0, 0.15);
-            --button-border-hover: rgba(0, 0, 0, 0.28);
-            --button-color: rgba(40, 40, 44, 0.88);
-            --tooltip-bg: rgba(40, 40, 44, 0.95);
-            --tooltip-color: rgba(255, 255, 255, 0.95);
-            --iframe-bg: #ffffff;
-            --panel-bg: rgba(252, 252, 254, 0.94);
-            --panel-border: rgba(0, 0, 0, 0.10);
-            --panel-divider: rgba(0, 0, 0, 0.07);
-            --panel-text: rgba(20, 20, 24, 0.92);
-            --panel-text-muted: rgba(20, 20, 24, 0.72);
-            --panel-text-soft: rgba(20, 20, 24, 0.58);
-            --panel-body-text: rgba(20, 20, 24, 0.86);
-            --panel-headline: rgba(10, 10, 14, 0.96);
-            --panel-quote: rgba(20, 20, 24, 0.65);
-            --panel-shadow-1: rgba(0, 0, 0, 0.18);
-            --panel-shadow-2: rgba(0, 0, 0, 0.10);
-            --notice-bg: rgba(0, 0, 0, 0.04);
-            --code-bg: rgba(0, 0, 0, 0.06);
-            --pre-bg: rgba(0, 0, 0, 0.05);
-            --pre-border: rgba(0, 0, 0, 0.08);
-            --copy-bg: rgba(0, 0, 0, 0.05);
-            --copy-bg-hover: rgba(0, 0, 0, 0.09);
-            --copy-border: rgba(0, 0, 0, 0.12);
-            --copy-border-hover: rgba(0, 0, 0, 0.20);
-            --close-hover-bg: rgba(0, 0, 0, 0.06);
-            --close-hover-border: rgba(0, 0, 0, 0.10);
-            --close-hover-color: rgba(0, 0, 0, 0.85);
-            --next-bg: rgba(0, 0, 0, 0.05);
-            --next-border: rgba(0, 0, 0, 0.12);
-            --next-bg-hover: rgba(0, 0, 0, 0.09);
-            --next-border-hover: rgba(0, 0, 0, 0.20);
-            --badge-bg: rgba(60, 110, 220, 0.14);
-            --badge-border: rgba(60, 110, 220, 0.30);
-            --badge-color: #2a55b8;
-            --link-color: #2a55b8;
-            --quote-border: rgba(60, 110, 220, 0.40);
-            --scroll-thumb: rgba(0, 0, 0, 0.18);
-            --scroll-thumb-hover: rgba(0, 0, 0, 0.30);
-        }
-        .button-container {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            z-index: 1000;
-        }
-        .overlay-button {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            background: var(--button-bg);
-            border: 1px solid var(--button-border);
-            color: var(--button-color);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            transition: all 0.2s ease;
-        }
-        .overlay-button:hover {
-            background: var(--button-bg-hover);
-            border-color: var(--button-border-hover);
-            transform: translateY(-2px);
-        }
-        .overlay-button::before {
-            content: attr(data-tooltip);
-            position: absolute;
-            left: 50px;
-            background: var(--tooltip-bg);
-            color: var(--tooltip-color);
-            padding: 6px 12px;
-            border-radius: 4px;
-            font-size: 12px;
-            white-space: nowrap;
-            visibility: hidden;
-            opacity: 0;
-            transition: all 0.2s ease;
-        }
-        .overlay-button:hover::before {
-            visibility: visible;
-            opacity: 1;
-        }
-        .overlay-button svg {
-            width: 16px;
-            height: 16px;
-            fill: currentColor;
-        }
-        .api-key-container {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            z-index: 1000;
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-        }
-        .iframe-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            margin-bottom: 4px;
-        }
-        .loading-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.4);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-        }
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid #f3f3f3;
-            border-top: 5px solid #3498db;
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        iframe {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            border: none;
-            background: var(--iframe-bg);
-        }
-
-        .prompt-panel {
-            position: absolute;
-            top: 16px;
-            left: 72px;
-            width: min(340px, calc(100% - 92px));
-            max-height: 40vh;
-            display: none;
-            flex-direction: column;
-            background: var(--panel-bg);
-            backdrop-filter: blur(14px);
-            -webkit-backdrop-filter: blur(14px);
-            border: 1px solid var(--panel-border);
-            border-radius: 10px;
-            box-shadow: 0 16px 40px -18px var(--panel-shadow-1),
-                        0 6px 16px -8px var(--panel-shadow-2);
-            overflow: hidden;
-            z-index: 1100;
-            color: var(--panel-text);
-            transform: translateY(-6px);
-            opacity: 0;
-            transition: transform 0.18s ease, opacity 0.18s ease;
-        }
-
-        .prompt-panel.visible {
-            display: flex;
-            transform: translateY(0);
-            opacity: 1;
-        }
-
-        .prompt-panel-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 8px 10px 8px 12px;
-            border-bottom: 1px solid var(--panel-divider);
-            flex-shrink: 0;
-        }
-
-        .prompt-panel-title {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 11px;
-            font-weight: 600;
-            letter-spacing: 0.05em;
-            text-transform: uppercase;
-            color: var(--panel-text-muted);
-        }
-
-        .prompt-panel-badge {
-            display: inline-flex;
-            align-items: center;
-            padding: 1px 8px;
-            border-radius: 999px;
-            background: var(--badge-bg);
-            border: 1px solid var(--badge-border);
-            color: var(--badge-color);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            text-transform: none;
-        }
-
-        .prompt-panel-meta {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-            padding: 8px 12px 0 12px;
-        }
-
-        .prompt-panel-meta:empty {
-            display: none;
-        }
-
-        .prompt-panel-scope {
-            font-size: 11px;
-            color: var(--panel-text-muted);
-            letter-spacing: 0.02em;
-        }
-
-        .prompt-panel-scope:empty {
-            display: none;
-        }
-
-        .prompt-panel-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-
-        .prompt-panel-chips:empty {
-            display: none;
-        }
-
-        .prompt-panel-chip {
-            display: inline-flex;
-            align-items: center;
-            padding: 2px 8px;
-            border-radius: 999px;
-            background: var(--badge-bg);
-            border: 1px solid var(--badge-border);
-            color: var(--badge-color);
-            font-size: 10px;
-            font-weight: 500;
-            letter-spacing: 0.02em;
-            white-space: nowrap;
-            max-width: 100%;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .prompt-panel-next {
-            display: none;
-            align-items: center;
-            padding: 1px 7px;
-            border-radius: 999px;
-            background: var(--next-bg);
-            border: 1px solid var(--next-border);
-            color: var(--panel-body-text);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            text-transform: none;
-            cursor: pointer;
-        }
-
-        .prompt-panel-next:hover {
-            background: var(--next-bg-hover);
-            border-color: var(--next-border-hover);
-        }
-
-        .prompt-panel-close {
-            width: 22px;
-            height: 22px;
-            border-radius: 5px;
-            background: transparent;
-            border: 1px solid transparent;
-            color: var(--panel-text-soft);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-        }
-
-        .prompt-panel-close:hover {
-            background: var(--close-hover-bg);
-            border-color: var(--close-hover-border);
-            color: var(--close-hover-color);
-        }
-
-        .prompt-panel-close svg {
-            width: 12px;
-            height: 12px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-
-        .prompt-panel-body {
-            flex: 1 1 auto;
-            min-height: 0;
-            padding: 10px 12px;
-            font-size: 13px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-            word-break: break-word;
-            overflow-y: auto;
-            overflow-x: auto;
-            color: var(--panel-body-text);
-            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-            scrollbar-width: thin;
-            scrollbar-color: var(--scroll-thumb) transparent;
-        }
-
-        .prompt-panel-body::-webkit-scrollbar {
-            width: 4px;
-            height: 4px;
-        }
-        .prompt-panel-body::-webkit-scrollbar-track {
-            background: transparent;
-        }
-        .prompt-panel-body::-webkit-scrollbar-thumb {
-            background: var(--scroll-thumb);
-            border-radius: 999px;
-        }
-        .prompt-panel-body::-webkit-scrollbar-thumb:hover {
-            background: var(--scroll-thumb-hover);
-        }
-
-        .prompt-panel-body.markdown {
-            white-space: normal;
-            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-        }
-
-        .prompt-panel-body.markdown h1,
-        .prompt-panel-body.markdown h2,
-        .prompt-panel-body.markdown h3 {
-            margin: 0 0 8px 0;
-            color: var(--panel-headline);
-            line-height: 1.25;
-        }
-
-        .prompt-panel-body.markdown h1 { font-size: 19px; }
-        .prompt-panel-body.markdown h2 { font-size: 16px; }
-        .prompt-panel-body.markdown h3 { font-size: 14px; }
-
-        .prompt-panel-body.markdown p,
-        .prompt-panel-body.markdown ul,
-        .prompt-panel-body.markdown ol,
-        .prompt-panel-body.markdown blockquote,
-        .prompt-panel-body.markdown pre {
-            margin: 0 0 10px 0;
-        }
-
-        .prompt-panel-body.markdown ul,
-        .prompt-panel-body.markdown ol {
-            padding-left: 18px;
-        }
-
-        .prompt-panel-body.markdown li {
-            margin: 3px 0;
-        }
-
-        .prompt-panel-body.markdown code {
-            padding: 1px 4px;
-            border-radius: 4px;
-            background: var(--code-bg);
-            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-            font-size: 0.95em;
-        }
-
-        .prompt-panel-body.markdown pre {
-            padding: 9px 10px;
-            border-radius: 7px;
-            background: var(--pre-bg);
-            border: 1px solid var(--pre-border);
-            overflow-x: auto;
-        }
-
-        .prompt-panel-body.markdown pre code {
-            padding: 0;
-            background: transparent;
-        }
-
-        .prompt-panel-body.markdown blockquote {
-            padding-left: 10px;
-            border-left: 2px solid var(--quote-border);
-            color: var(--panel-quote);
-        }
-
-        .prompt-panel-body.markdown a {
-            color: var(--link-color);
-            text-decoration: none;
-        }
-
-        .prompt-panel-body.markdown a:hover {
-            text-decoration: underline;
-        }
-
-        .prompt-panel-footer {
-            display: flex;
-            align-items: center;
-            justify-content: flex-end;
-            gap: 5px;
-            padding: 6px 8px 8px 8px;
-            border-top: 1px solid var(--panel-divider);
-            flex-shrink: 0;
-        }
-
-        .prompt-panel-feedback {
-            font-size: 11px;
-            color: var(--panel-text-soft);
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-
-        .prompt-panel-feedback.visible {
-            opacity: 1;
-        }
-
-        .prompt-panel-notice {
-            display: none;
-            padding: 7px 12px;
-            border-bottom: 1px solid var(--panel-divider);
-            color: var(--panel-quote);
-            font-size: 11px;
-            line-height: 1.35;
-            background: var(--notice-bg);
-        }
-
-        .prompt-panel-notice.visible {
-            display: block;
-        }
-
-        .prompt-panel-notice.blinking {
-            animation: prompt-panel-blink 1.1s ease-in-out infinite;
-        }
-
-        @keyframes prompt-panel-blink {
-            0%, 100% {
-                opacity: 0.45;
-            }
-            50% {
-                opacity: 1;
-            }
-        }
-
-        .prompt-panel-copy {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 4px 7px;
-            font-size: 11px;
-            border-radius: 6px;
-            background: var(--copy-bg);
-            border: 1px solid var(--copy-border);
-            color: var(--panel-text);
-            cursor: pointer;
-            flex: 0 0 auto;
-            white-space: nowrap;
-            transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-        }
-
-        .prompt-panel-copy:hover {
-            background: var(--copy-bg-hover);
-            border-color: var(--copy-border-hover);
-        }
-
-        .prompt-panel-copy:active {
-            transform: translateY(1px);
-        }
-
-        .prompt-panel-copy svg {
-            width: 11px;
-            height: 11px;
-            stroke: currentColor;
-            fill: none;
-            stroke-width: 2;
-            stroke-linecap: round;
-            stroke-linejoin: round;
-        }
-
-        .export-preview-panel {
-            width: min(480px, calc(100% - 92px));
-            max-height: 70vh;
-        }
-
-        .export-preview-name {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            padding: 10px 12px 6px 12px;
-            border-bottom: 1px solid var(--panel-divider);
-        }
-
-        .export-preview-name label {
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            color: var(--panel-text-muted);
-        }
-
-        .export-preview-name input {
-            box-sizing: border-box;
-            width: 100%;
-            padding: 6px 8px;
-            font-size: 12px;
-            border-radius: 5px;
-            background: var(--copy-bg);
-            border: 1px solid var(--copy-border);
-            color: var(--panel-text);
-            font-family: var(--vscode-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-            outline: none;
-            transition: border-color 0.15s ease, background 0.15s ease;
-        }
-
-        .export-preview-name input:focus {
-            border-color: var(--copy-border-hover);
-            background: var(--copy-bg-hover);
-        }
-
-        .export-preview-text {
-            box-sizing: border-box;
-            flex: 1 1 auto;
-            min-height: 160px;
-            margin: 0;
-            padding: 10px 12px;
-            font-size: 12px;
-            line-height: 1.5;
-            background: transparent;
-            border: none;
-            outline: none;
-            resize: none;
-            color: var(--panel-body-text);
-            font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, monospace);
-            scrollbar-width: thin;
-            scrollbar-color: var(--scroll-thumb) transparent;
-            white-space: pre-wrap;
-        }
-
-        .export-preview-text::-webkit-scrollbar {
-            width: 4px;
-        }
-        .export-preview-text::-webkit-scrollbar-thumb {
-            background: var(--scroll-thumb);
-            border-radius: 999px;
-        }
-        .export-preview-text::-webkit-scrollbar-thumb:hover {
-            background: var(--scroll-thumb-hover);
-        }
-
-        .export-preview-submit {
-            background: var(--badge-bg);
-            border-color: var(--badge-border);
-            color: var(--badge-color);
-        }
-
-        .export-preview-submit:hover {
-            background: var(--badge-bg);
-            border-color: var(--badge-border);
-            filter: brightness(1.1);
-        }
-
-        .export-preview-submit[disabled] {
-            opacity: 0.55;
-            cursor: progress;
-        }
-
-        .prompt-panel-feedback.error {
-            color: #ff7d7d;
-            opacity: 1;
-        }
-
-        body[data-theme="light"] .prompt-panel-feedback.error {
-            color: #c0392b;
-        }
-    </style>
-</head>
-<body>
-    <div class="button-container">
-        <button id="analyzeButton" class="overlay-button" data-tooltip="Analyze Current Document">
-            <svg viewBox="0 0 24 24">
-                <path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
-            </svg>
-        </button>
-        
-        <button id="copyButton" class="overlay-button" data-tooltip="Copy Graph or Selection to Clipboard">
-            <svg viewBox="0 0 24 24">
-                <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
-            </svg>
-        </button>
-
-        <button id="exportButton" class="overlay-button" data-tooltip="Export Analyzed Content to InfraNodus">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 3v12"/>
-                <path d="m7 8 5-5 5 5"/>
-                <path d="M5 21h14"/>
-            </svg>
-        </button>
-
-    </div>
-    <div class="api-key-container">
-        <button id="settingsButton" class="overlay-button" data-tooltip="Open InfraNodus Extension Settings">
-            <svg viewBox="0 0 24 24">
-                <path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1a7.28 7.28 0 0 0-1.69-.98L14.5 2.42A.49.49 0 0 0 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.24-1.18.56-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.05.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.24 1.18-.56 1.69-.98l2.49 1c.23.08.48 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"/>
-            </svg>
-        </button>
-        <button id="apiKeyButton" class="overlay-button" data-tooltip="Set InfraNodus API Key">
-            <svg viewBox="0 0 24 24">
-                <path d="M22 19h-6v-4h-2.68c-1.14 2.42-3.6 4-6.32 4-3.86 0-7-3.14-7-7s3.14-7 7-7c2.72 0 5.17 1.58 6.32 4H24v6h-2v4zm-4-2h2v-4h2v-2H11.94l-.23-.67C11.01 8.34 9.11 7 7 7c-2.76 0-5 2.24-5 5s2.24 5 5 5c2.11 0 4.01-1.34 4.71-3.33l.23-.67H18v4zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3zm0-4c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/>
-            </svg>
-        </button>
-    </div>
-    <div class="iframe-container margin-right: 8px;">
-        <div class="loading-overlay" id="loadingOverlay">
-            <div class="loading-spinner"></div>
-        </div>
-        <iframe id="graphFrame" src="about:blank" frameborder="0"></iframe>
-
-        <div id="promptPanel" class="prompt-panel" role="dialog" aria-label="AI Prompt">
-            <div class="prompt-panel-header">
-                <div class="prompt-panel-title">
-                    <span id="promptPanelTitle">AI Prompt</span>
-                    <span id="promptPanelBadge" class="prompt-panel-badge">Idea</span>
-                    <button id="promptPanelNextAdvice" class="prompt-panel-next" title="Show next AI response">
-                        Next
-                    </button>
-                </div>
-                <button id="promptPanelClose" class="prompt-panel-close" title="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-            <div id="promptPanelNotice" class="prompt-panel-notice"></div>
-            <div id="promptPanelBody" class="prompt-panel-body"></div>
-            <div class="prompt-panel-footer">
-                <span id="promptPanelFeedback" class="prompt-panel-feedback">Copied to clipboard</span>
-                <button id="promptPanelFind" class="prompt-panel-copy" title="Find related statements in your files" style="display:none;">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <circle cx="11" cy="11" r="7"/>
-                        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                    </svg>
-                    Find in Files
-                </button>
-                <button id="promptPanelToggle" class="prompt-panel-copy" title="Switch between response and prompt" style="display:none;">
-                    AI Response
-                </button>
-                <button id="promptPanelExport" class="prompt-panel-copy" title="Export this AI response to InfraNodus (or selected text if any)">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 3v12"/>
-                        <path d="m7 8 5-5 5 5"/>
-                        <path d="M5 21h14"/>
-                    </svg>
-                    Export
-                </button>
-                <button id="promptPanelCopy" class="prompt-panel-copy" title="Copy prompt to clipboard">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
-                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-                        <path d="M8 4h8"/>
-                    </svg>
-                    Copy
-                </button>
-            </div>
-        </div>
-
-        <div id="contextPanel" class="prompt-panel" role="dialog" aria-label="Currently Analyzed Context">
-            <div class="prompt-panel-header">
-                <div class="prompt-panel-title">
-                    Currently Analyzed Context
-                </div>
-                <button id="contextPanelClose" class="prompt-panel-close" title="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-            <div id="contextPanelMeta" class="prompt-panel-meta">
-                <div id="contextPanelScope" class="prompt-panel-scope"></div>
-                <div id="contextPanelChips" class="prompt-panel-chips"></div>
-            </div>
-            <div id="contextPanelBody" class="prompt-panel-body"></div>
-            <div class="prompt-panel-footer">
-                <span id="contextPanelFeedback" class="prompt-panel-feedback">Copied to clipboard</span>
-                <button id="contextPanelExport" class="prompt-panel-copy" title="Export this context to InfraNodus">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <path d="M12 3v12"/>
-                        <path d="m7 8 5-5 5 5"/>
-                        <path d="M5 21h14"/>
-                    </svg>
-                    Export to InfraNodus
-                </button>
-                <button id="contextPanelCopy" class="prompt-panel-copy" title="Copy analyzed context to clipboard">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
-                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
-                        <path d="M8 4h8"/>
-                    </svg>
-                    Copy
-                </button>
-            </div>
-        </div>
-
-        <div id="exportPreviewPanel" class="prompt-panel export-preview-panel" role="dialog" aria-label="Export to InfraNodus">
-            <div class="prompt-panel-header">
-                <div class="prompt-panel-title">
-                    Export to InfraNodus
-                </div>
-                <button id="exportPreviewClose" class="prompt-panel-close" title="Close">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="export-preview-name">
-                <label for="exportPreviewName">Graph name</label>
-                <input id="exportPreviewName" type="text" placeholder="my-vscode-context" autocomplete="off" spellcheck="false" />
-            </div>
-            <textarea id="exportPreviewText" class="export-preview-text" spellcheck="false" placeholder="Content to export..."></textarea>
-            <div class="prompt-panel-footer">
-                <span id="exportPreviewFeedback" class="prompt-panel-feedback"></span>
-                <button id="exportPreviewCancel" class="prompt-panel-copy" title="Cancel">
-                    Cancel
-                </button>
-                <button id="exportPreviewSubmit" class="prompt-panel-copy export-preview-submit" title="Submit to InfraNodus">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <path d="M12 3v12"/>
-                        <path d="m7 8 5-5 5 5"/>
-                        <path d="M5 21h14"/>
-                    </svg>
-                    Submit
-                </button>
-            </div>
-        </div>
-    </div>
-    <script>
-        const vscode = acquireVsCodeApi();
-
-        function applyTheme(theme) {
-            const resolved = theme === 'dark' ? 'dark' : 'light';
-            document.body.setAttribute('data-theme', resolved);
-        }
-
-        // Apply persisted theme as early as possible to avoid a flash of wrong-theme buttons
-        try {
-            const earlyState = vscode.getState();
-            applyTheme(earlyState && earlyState.infraNodusTheme === 'dark' ? 'dark' : 'light');
-        } catch (e) {
-            applyTheme('light');
-        }
-
-        console.log("Activated InfraNodus Webview iFrame");
-        document.addEventListener('DOMContentLoaded', (event) => {
-            // Set up button click handlers
-            document.getElementById('analyzeButton').addEventListener('click', () => {
-                
-                vscode.postMessage({
-                    command: 'reload'
-                });
-            });
-
-            document.getElementById('copyButton').addEventListener('click', () => {
-
-                vscode.postMessage({
-                    command: 'copyGraphToClipboard'
-                });
-            });
-
-            document.getElementById('exportButton').addEventListener('click', () => {
-                vscode.postMessage({
-                    command: 'requestExportPreview'
-                });
-            });
-
-            document.getElementById('settingsButton').addEventListener('click', () => {
-                vscode.postMessage({
-                    command: 'openSettings'
-                });
-            });
-
-            document.getElementById('apiKeyButton').addEventListener('click', () => {
-                
-                vscode.postMessage({
-                    command: 'setApiKey'
-                });
-            });
-
-            const promptPanel = document.getElementById('promptPanel');
-            const promptPanelTitle = document.getElementById('promptPanelTitle');
-            const promptPanelBadge = document.getElementById('promptPanelBadge');
-            const promptPanelBody = document.getElementById('promptPanelBody');
-            const promptPanelClose = document.getElementById('promptPanelClose');
-            const promptPanelCopy = document.getElementById('promptPanelCopy');
-            const promptPanelExport = document.getElementById('promptPanelExport');
-            const promptPanelFind = document.getElementById('promptPanelFind');
-            const promptPanelToggle = document.getElementById('promptPanelToggle');
-            const promptPanelNextAdvice = document.getElementById('promptPanelNextAdvice');
-            const promptPanelNotice = document.getElementById('promptPanelNotice');
-            const promptPanelFeedback = document.getElementById('promptPanelFeedback');
-            const contextPanel = document.getElementById('contextPanel');
-            const contextPanelBody = document.getElementById('contextPanelBody');
-            const contextPanelClose = document.getElementById('contextPanelClose');
-            const contextPanelCopy = document.getElementById('contextPanelCopy');
-            const contextPanelExport = document.getElementById('contextPanelExport');
-            const contextPanelFeedback = document.getElementById('contextPanelFeedback');
-            const contextPanelChips = document.getElementById('contextPanelChips');
-            const contextPanelScope = document.getElementById('contextPanelScope');
-            const exportPreviewPanel = document.getElementById('exportPreviewPanel');
-            const exportPreviewName = document.getElementById('exportPreviewName');
-            const exportPreviewText = document.getElementById('exportPreviewText');
-            const exportPreviewClose = document.getElementById('exportPreviewClose');
-            const exportPreviewCancel = document.getElementById('exportPreviewCancel');
-            const exportPreviewSubmit = document.getElementById('exportPreviewSubmit');
-            const exportPreviewFeedback = document.getElementById('exportPreviewFeedback');
-            let exportPreviewSubmitting = false;
-            let currentPromptText = '';
-            let currentResponseTexts = [];
-            let currentResponseIndex = 0;
-            let currentPromptLabel = 'Prompt';
-            let currentPromptView = 'prompt';
-            let currentAdviceRequestId = '';
-            let currentModelToUse = 'gpt-5.4';
-            let isAdviceLoading = false;
-            let adviceError = '';
-            let currentContextText = '';
-
-            function escapeHtml(value) {
-                return String(value || '')
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#39;');
-            }
-
-            function renderInlineMarkdown(value) {
-                const codeSpans = [];
-                let html = escapeHtml(value).replace(/`([^`]+)`/g, (_, code) => {
-                    const token = `__CODE_SPAN_${codeSpans.length}__`;
-                    codeSpans.push(`<code>${code}</code>`);
-                    return token;
-                });
-
-                html = html
-                    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g, '<a href="$2">$1</a>')
-                    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*([^*]+)\*/g, '<em>$1</em>');
-
-                codeSpans.forEach((code, index) => {
-                    html = html.replace(`__CODE_SPAN_${index}__`, code);
-                });
-
-                return html;
-            }
-
-            function renderMarkdown(value) {
-                const lines = String(value || '').replace(/\r\n/g, '\n').split('\n');
-                const blocks = [];
-                let paragraph = [];
-                let listItems = [];
-                let listType = '';
-                let inCodeBlock = false;
-                let codeLines = [];
-
-                function flushParagraph() {
-                    if (!paragraph.length) return;
-                    blocks.push(`<p>${renderInlineMarkdown(paragraph.join(' '))}</p>`);
-                    paragraph = [];
-                }
-
-                function flushList() {
-                    if (!listItems.length) return;
-                    const tag = listType === 'ol' ? 'ol' : 'ul';
-                    blocks.push(`<${tag}>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join('')}</${tag}>`);
-                    listItems = [];
-                    listType = '';
-                }
-
-                function flushCodeBlock() {
-                    if (!codeLines.length) return;
-                    blocks.push(`<pre><code>${escapeHtml(codeLines.join('\n'))}</code></pre>`);
-                    codeLines = [];
-                }
-
-                for (const line of lines) {
-                    if (/^\s*```/.test(line)) {
-                        if (inCodeBlock) {
-                            flushCodeBlock();
-                            inCodeBlock = false;
-                        } else {
-                            flushParagraph();
-                            flushList();
-                            inCodeBlock = true;
-                        }
-                        continue;
-                    }
-
-                    if (inCodeBlock) {
-                        codeLines.push(line);
-                        continue;
-                    }
-
-                    if (!line.trim()) {
-                        flushParagraph();
-                        flushList();
-                        continue;
-                    }
-
-                    const heading = line.match(/^(#{1,3})\s+(.+)$/);
-                    if (heading) {
-                        flushParagraph();
-                        flushList();
-                        blocks.push(`<h${heading[1].length}>${renderInlineMarkdown(heading[2])}</h${heading[1].length}>`);
-                        continue;
-                    }
-
-                    const unorderedListItem = line.match(/^\s*[-*]\s+(.+)$/);
-                    const orderedListItem = line.match(/^\s*\d+\.\s+(.+)$/);
-                    if (unorderedListItem || orderedListItem) {
-                        flushParagraph();
-                        const nextListType = orderedListItem ? 'ol' : 'ul';
-                        if (listType && listType !== nextListType) {
-                            flushList();
-                        }
-                        listType = nextListType;
-                        listItems.push((orderedListItem || unorderedListItem)[1]);
-                        continue;
-                    }
-
-                    const quote = line.match(/^\s*>\s?(.+)$/);
-                    if (quote) {
-                        flushParagraph();
-                        flushList();
-                        blocks.push(`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`);
-                        continue;
-                    }
-
-                    paragraph.push(line.trim());
-                }
-
-                if (inCodeBlock) {
-                    flushCodeBlock();
-                }
-                flushParagraph();
-                flushList();
-
-                return blocks.join('\n');
-            }
-
-            function renderPromptPanel() {
-                const showingResponse = currentPromptView === 'response';
-                const currentResponseText = currentResponseTexts[currentResponseIndex] || '';
-                const visibleText = showingResponse ? currentResponseText : currentPromptText;
-                promptPanelTitle.textContent = showingResponse ? 'AI Response' : 'AI Prompt';
-                promptPanelBadge.textContent = showingResponse && currentResponseTexts.length > 1
-                    ? `Response ${currentResponseIndex + 1}/${currentResponseTexts.length}`
-                    : showingResponse ? 'Response' : currentPromptLabel;
-                if (showingResponse) {
-                    promptPanelBody.classList.add('markdown');
-                    promptPanelBody.innerHTML = renderMarkdown(visibleText);
-                } else {
-                    promptPanelBody.classList.remove('markdown');
-                    promptPanelBody.textContent = visibleText;
-                }
-                promptPanelFind.style.display = !showingResponse ? 'inline-flex' : 'none';
-                promptPanelToggle.style.display = currentResponseTexts.length > 0 ? 'inline-flex' : 'none';
-                promptPanelToggle.textContent = showingResponse ? 'Show Prompt' : 'AI Response';
-                promptPanelNextAdvice.style.display = showingResponse && currentResponseTexts.length > 1 ? 'inline-flex' : 'none';
-                promptPanelNextAdvice.textContent = 'Next';
-                promptPanelCopy.title = showingResponse ? 'Copy response to clipboard' : 'Copy prompt to clipboard';
-
-                if (isAdviceLoading) {
-                    promptPanelNotice.textContent = `Getting response from ${currentModelToUse}...`;
-                    promptPanelNotice.classList.add('visible');
-                    promptPanelNotice.classList.add('blinking');
-                } else if (adviceError) {
-                    promptPanelNotice.textContent = adviceError;
-                    promptPanelNotice.classList.add('visible');
-                    promptPanelNotice.classList.remove('blinking');
-                } else {
-                    promptPanelNotice.textContent = '';
-                    promptPanelNotice.classList.remove('visible');
-                    promptPanelNotice.classList.remove('blinking');
-                }
-
-                promptPanelBody.scrollTop = 0;
-            }
-
-            function showPromptPanel({ label, action, prompt, canFindInFiles, adviceRequestId, isAdviceLoading: loadingAdvice, modelToUse }) {
-                currentPromptText = prompt || '';
-                currentResponseTexts = [];
-                currentResponseIndex = 0;
-                currentPromptLabel = label || action || 'Prompt';
-                currentPromptView = 'prompt';
-                currentAdviceRequestId = adviceRequestId || '';
-                currentModelToUse = modelToUse || 'gpt-5.4';
-                isAdviceLoading = !!loadingAdvice;
-                adviceError = '';
-                renderPromptPanel();
-                contextPanel.classList.remove('visible');
-                promptPanel.classList.add('visible');
-            }
-
-            function showGraphAiAdvice({ adviceRequestId, responses }) {
-                if (adviceRequestId && currentAdviceRequestId && adviceRequestId !== currentAdviceRequestId) {
-                    return;
-                }
-                currentResponseTexts = Array.isArray(responses)
-                    ? responses.filter(Boolean)
-                    : [];
-                currentResponseIndex = 0;
-                currentPromptView = 'response';
-                isAdviceLoading = false;
-                adviceError = '';
-                renderPromptPanel();
-                promptPanel.classList.add('visible');
-            }
-
-            function showGraphAiAdviceError({ adviceRequestId, error }) {
-                if (adviceRequestId && currentAdviceRequestId && adviceRequestId !== currentAdviceRequestId) {
-                    return;
-                }
-                isAdviceLoading = false;
-                adviceError = error ? `Could not load response: ${error}` : 'Could not load response.';
-                renderPromptPanel();
-            }
-
-            function hidePromptPanel() {
-                promptPanel.classList.remove('visible');
-            }
-
-            function showContextPanel({ contextText, chips, scopeLabel, emptyReason }) {
-                currentContextText = contextText || '';
-                if (currentContextText) {
-                    contextPanelBody.textContent = currentContextText;
-                } else if (emptyReason) {
-                    contextPanelBody.textContent = emptyReason;
-                } else {
-                    contextPanelBody.textContent = 'No analyzed context available yet. Analyze a document first.';
-                }
-
-                contextPanelScope.textContent = scopeLabel || '';
-
-                contextPanelChips.innerHTML = '';
-                const chipList = Array.isArray(chips) ? chips : [];
-                chipList.forEach((chip) => {
-                    if (!chip) return;
-                    const el = document.createElement('span');
-                    el.className = 'prompt-panel-chip';
-                    el.textContent = chip.label || '';
-                    if (chip.tooltip) el.title = chip.tooltip;
-                    contextPanelChips.appendChild(el);
-                });
-
-                promptPanel.classList.remove('visible');
-                contextPanel.classList.add('visible');
-                contextPanelBody.scrollTop = 0;
-            }
-
-            function hideContextPanel() {
-                contextPanel.classList.remove('visible');
-            }
-
-            promptPanelClose.addEventListener('click', hidePromptPanel);
-            contextPanelClose.addEventListener('click', hideContextPanel);
-
-            promptPanelCopy.addEventListener('click', async () => {
-                const currentResponseText = currentResponseTexts[currentResponseIndex] || '';
-                const textToCopy = currentPromptView === 'response' ? currentResponseText : currentPromptText;
-                if (!textToCopy) return;
-                try {
-                    await navigator.clipboard.writeText(textToCopy);
-                    promptPanelFeedback.classList.add('visible');
-                    setTimeout(() => promptPanelFeedback.classList.remove('visible'), 1500);
-                } catch (err) {
-                    console.error('Failed to copy prompt panel content:', err);
-                }
-            });
-
-            promptPanelFind.addEventListener('click', () => {
-                vscode.postMessage({ command: 'findInFiles' });
-            });
-
-            promptPanelToggle.addEventListener('click', () => {
-                if (currentResponseTexts.length === 0) return;
-                currentPromptView = currentPromptView === 'response' ? 'prompt' : 'response';
-                renderPromptPanel();
-            });
-
-            promptPanelNextAdvice.addEventListener('click', () => {
-                if (currentResponseTexts.length <= 1) return;
-                currentResponseIndex = (currentResponseIndex + 1) % currentResponseTexts.length;
-                renderPromptPanel();
-            });
-
-            contextPanelCopy.addEventListener('click', async () => {
-                if (!currentContextText) return;
-                try {
-                    await navigator.clipboard.writeText(currentContextText);
-                    contextPanelFeedback.classList.add('visible');
-                    setTimeout(() => contextPanelFeedback.classList.remove('visible'), 1500);
-                } catch (err) {
-                    console.error('Failed to copy analyzed context:', err);
-                }
-            });
-
-            contextPanelExport.addEventListener('click', () => {
-                vscode.postMessage({ command: 'exportAnalyzedContextToInfraNodus' });
-            });
-
-            promptPanelExport.addEventListener('click', () => {
-                const showingResponse = currentPromptView === 'response';
-                const currentResponseText = currentResponseTexts[currentResponseIndex] || '';
-                const fullText = showingResponse ? currentResponseText : currentPromptText;
-
-                // Prefer the user's selection inside the panel body, if any.
-                let textToExport = fullText;
-                let usingSelection = false;
-                try {
-                    const sel = window.getSelection();
-                    if (sel && !sel.isCollapsed) {
-                        const selText = (sel.toString() || '').trim();
-                        if (selText) {
-                            // Verify selection is inside the panel body
-                            let node = sel.anchorNode;
-                            while (node && node !== promptPanelBody && node !== document.body) {
-                                node = node.parentNode;
-                            }
-                            if (node === promptPanelBody) {
-                                textToExport = sel.toString();
-                                usingSelection = true;
-                            }
-                        }
-                    }
-                } catch (err) {
-                    // Selection API unavailable — fall back to full text.
-                }
-
-                if (!textToExport || !textToExport.trim()) {
-                    promptPanelFeedback.textContent = 'Nothing to export yet';
-                    promptPanelFeedback.classList.add('visible');
-                    setTimeout(() => {
-                        promptPanelFeedback.textContent = 'Copied to clipboard';
-                        promptPanelFeedback.classList.remove('visible');
-                    }, 1800);
-                    return;
-                }
-
-                vscode.postMessage({
-                    command: 'requestAiAdviceExportPreview',
-                    text: textToExport,
-                    adviceKind: currentPromptLabel || 'advice',
-                    view: showingResponse ? 'response' : 'prompt',
-                    usingSelection
-                });
-            });
-
-            function setExportPreviewFeedback(text, isError) {
-                exportPreviewFeedback.textContent = text || '';
-                exportPreviewFeedback.classList.toggle('error', !!isError);
-                exportPreviewFeedback.classList.toggle('visible', !!text);
-            }
-
-            function setExportPreviewSubmitting(value) {
-                exportPreviewSubmitting = !!value;
-                exportPreviewSubmit.disabled = exportPreviewSubmitting;
-                if (exportPreviewSubmitting) {
-                    setExportPreviewFeedback('Exporting…', false);
-                }
-            }
-
-            function showExportPreview({ defaultName, text }) {
-                promptPanel.classList.remove('visible');
-                contextPanel.classList.remove('visible');
-                exportPreviewName.value = defaultName || 'vscode-context';
-                exportPreviewText.value = text || '';
-                setExportPreviewFeedback('', false);
-                setExportPreviewSubmitting(false);
-                exportPreviewPanel.classList.add('visible');
-                setTimeout(() => exportPreviewName.focus(), 30);
-            }
-
-            function hideExportPreview() {
-                exportPreviewPanel.classList.remove('visible');
-                setExportPreviewSubmitting(false);
-            }
-
-            exportPreviewClose.addEventListener('click', hideExportPreview);
-            exportPreviewCancel.addEventListener('click', hideExportPreview);
-
-            exportPreviewSubmit.addEventListener('click', () => {
-                if (exportPreviewSubmitting) return;
-                const name = (exportPreviewName.value || '').trim();
-                const text = exportPreviewText.value || '';
-                if (!name) {
-                    setExportPreviewFeedback('Graph name is required', true);
-                    exportPreviewName.focus();
-                    return;
-                }
-                if (!text.trim()) {
-                    setExportPreviewFeedback('Cannot export empty content', true);
-                    exportPreviewText.focus();
-                    return;
-                }
-                setExportPreviewSubmitting(true);
-                vscode.postMessage({
-                    command: 'submitExportToInfraNodus',
-                    name,
-                    text
-                });
-            });
-
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && promptPanel.classList.contains('visible')) {
-                    hidePromptPanel();
-                }
-                if (e.key === 'Escape' && contextPanel.classList.contains('visible')) {
-                    hideContextPanel();
-                }
-                if (e.key === 'Escape' && exportPreviewPanel.classList.contains('visible')) {
-                    hideExportPreview();
-                }
-            });
-
-            // Listen for messages from the iframe
-            window.addEventListener('message', event => {
-                const message = event.data;
-                
-                // Log all messages from iframe
-                // console.log('Message from iframe for webview:', message);
-
-                
-
-                if (message.type === 'LOAD_JSON') {
-
-                    if (message.payload && message.payload.error) {
-                        vscode.postMessage({
-                            command: 'showError',
-                            error: message.payload.error
-                        });
-                        return;
-                    }
-                    // Store the data in vscode state
-                    const currentState = vscode.getState() || {};
-                    vscode.setState({ 
-                        ...currentState,
-                        graphData: message.payload 
-                    });
-                    
-                    // Forward the message to the iframe
-                    document.getElementById('graphFrame').contentWindow.postMessage({
-                        type: 'LOAD_JSON',
-                        payload: message.payload
-                    }, '*');
-                }
-
-                if (message.type === 'UPDATE_SELECTED_NODES') {
-                    
-                    vscode.postMessage({
-                        command: 'forwardToClipboard',
-                        type: 'UPDATE_SELECTED_NODES',
-                        payload: {
-                            selectedNodes: message.payload, // for compability with the old iframe API version
-                            connectedNodes: message.connectedNodes
-                        }
-                    });
-                    
-                }
-
-                if (message.type === 'UPDATE_GROUPS') {
-                    
-                    vscode.postMessage({
-                        command: 'forwardToClipboard',
-                        type: 'UPDATE_GROUPS',
-                        payload: {
-                            selectedClusters: message.payload,
-                        }
-                    });
-                    
-                }
-
-                if (message.type === 'EXTERNAL_ACTION') {
-
-                    vscode.postMessage({
-                        command: 'processExternalAction',
-                        type: 'EXTERNAL_ACTION',
-                        payload: {
-                            action: message.payload,
-                            meta: message.meta
-                        }
-                    });
-
-                }
-             
-            });
-
-            // Add this to capture iframe's console logs
-            const iframe = document.getElementById('graphFrame');
-            iframe.onload = () => {
-                // Inject console logger into iframe
-                iframe.contentWindow?.postMessage({
-                    type: 'INJECT_LOGGER',
-                    payload: `
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>InfraNodus Graph</title>
+		<style>
+			body {
+				margin: 0;
+				padding: 10px 10px 14px 10px;
+				display: flex;
+				flex-direction: column;
+				height: calc(100vh - 14px);
+				--button-bg: rgba(68, 68, 68, 0.92);
+				--button-bg-hover: rgba(90, 90, 90, 0.95);
+				--button-border: rgba(255, 255, 255, 0.25);
+				--button-border-hover: rgba(255, 255, 255, 0.4);
+				--button-color: rgba(255, 255, 255, 0.85);
+				--tooltip-bg: rgba(50, 50, 50, 0.95);
+				--tooltip-color: rgba(255, 255, 255, 0.9);
+				--iframe-bg: #1f1f23;
+				--panel-bg: #18181c;
+				--panel-border: rgba(255, 255, 255, 0.1);
+				--panel-divider: rgba(255, 255, 255, 0.06);
+				--panel-text: rgba(255, 255, 255, 0.92);
+				--panel-text-muted: rgba(255, 255, 255, 0.78);
+				--panel-text-soft: rgba(255, 255, 255, 0.65);
+				--panel-body-text: rgba(255, 255, 255, 0.86);
+				--panel-headline: rgba(255, 255, 255, 0.96);
+				--panel-quote: rgba(255, 255, 255, 0.72);
+				--panel-shadow-1: rgba(0, 0, 0, 0.6);
+				--panel-shadow-2: rgba(0, 0, 0, 0.4);
+				--notice-bg: rgba(255, 255, 255, 0.04);
+				--code-bg: rgba(255, 255, 255, 0.08);
+				--pre-bg: rgba(0, 0, 0, 0.22);
+				--pre-border: rgba(255, 255, 255, 0.08);
+				--copy-bg: rgba(255, 255, 255, 0.08);
+				--copy-bg-hover: rgba(255, 255, 255, 0.13);
+				--copy-border: rgba(255, 255, 255, 0.14);
+				--copy-border-hover: rgba(255, 255, 255, 0.22);
+				--close-hover-bg: rgba(255, 255, 255, 0.08);
+				--close-hover-border: rgba(255, 255, 255, 0.12);
+				--close-hover-color: rgba(255, 255, 255, 0.95);
+				--next-bg: rgba(255, 255, 255, 0.08);
+				--next-border: rgba(255, 255, 255, 0.14);
+				--next-bg-hover: rgba(255, 255, 255, 0.14);
+				--next-border-hover: rgba(255, 255, 255, 0.24);
+				--badge-bg: rgba(120, 165, 255, 0.18);
+				--badge-border: rgba(120, 165, 255, 0.32);
+				--badge-color: #cfe0ff;
+				--link-color: #9fc0ff;
+				--quote-border: rgba(120, 165, 255, 0.45);
+				--scroll-thumb: rgba(255, 255, 255, 0.16);
+				--scroll-thumb-hover: rgba(255, 255, 255, 0.24);
+			}
+
+			body[data-theme="light"] {
+				--button-bg: rgba(245, 245, 247, 0.95);
+				--button-bg-hover: rgba(232, 232, 236, 0.98);
+				--button-border: rgba(0, 0, 0, 0.15);
+				--button-border-hover: rgba(0, 0, 0, 0.28);
+				--button-color: rgba(40, 40, 44, 0.88);
+				--tooltip-bg: rgba(40, 40, 44, 0.95);
+				--tooltip-color: rgba(255, 255, 255, 0.95);
+				--iframe-bg: #ffffff;
+				--panel-bg: #fcfcfe;
+				--panel-border: rgba(0, 0, 0, 0.1);
+				--panel-divider: rgba(0, 0, 0, 0.07);
+				--panel-text: rgba(20, 20, 24, 0.92);
+				--panel-text-muted: rgba(20, 20, 24, 0.72);
+				--panel-text-soft: rgba(20, 20, 24, 0.58);
+				--panel-body-text: rgba(20, 20, 24, 0.86);
+				--panel-headline: rgba(10, 10, 14, 0.96);
+				--panel-quote: rgba(20, 20, 24, 0.65);
+				--panel-shadow-1: rgba(0, 0, 0, 0.18);
+				--panel-shadow-2: rgba(0, 0, 0, 0.1);
+				--notice-bg: rgba(0, 0, 0, 0.04);
+				--code-bg: rgba(0, 0, 0, 0.06);
+				--pre-bg: rgba(0, 0, 0, 0.05);
+				--pre-border: rgba(0, 0, 0, 0.08);
+				--copy-bg: rgba(0, 0, 0, 0.05);
+				--copy-bg-hover: rgba(0, 0, 0, 0.09);
+				--copy-border: rgba(0, 0, 0, 0.12);
+				--copy-border-hover: rgba(0, 0, 0, 0.2);
+				--close-hover-bg: rgba(0, 0, 0, 0.06);
+				--close-hover-border: rgba(0, 0, 0, 0.1);
+				--close-hover-color: rgba(0, 0, 0, 0.85);
+				--next-bg: rgba(0, 0, 0, 0.05);
+				--next-border: rgba(0, 0, 0, 0.12);
+				--next-bg-hover: rgba(0, 0, 0, 0.09);
+				--next-border-hover: rgba(0, 0, 0, 0.2);
+				--badge-bg: rgba(60, 110, 220, 0.14);
+				--badge-border: rgba(60, 110, 220, 0.3);
+				--badge-color: #2a55b8;
+				--link-color: #2a55b8;
+				--quote-border: rgba(60, 110, 220, 0.4);
+				--scroll-thumb: rgba(0, 0, 0, 0.18);
+				--scroll-thumb-hover: rgba(0, 0, 0, 0.3);
+			}
+			.button-container {
+				position: absolute;
+				top: 20px;
+				left: 20px;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+				z-index: 1000;
+			}
+			.overlay-button {
+				width: 32px;
+				height: 32px;
+				border-radius: 6px;
+				background: var(--button-bg);
+				border: 1px solid var(--button-border);
+				color: var(--button-color);
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				position: relative;
+				transition: all 0.2s ease;
+			}
+			.overlay-button:hover {
+				background: var(--button-bg-hover);
+				border-color: var(--button-border-hover);
+				transform: translateY(-2px);
+			}
+			.overlay-button::before {
+				content: attr(data-tooltip);
+				position: absolute;
+				left: 50px;
+				background: var(--tooltip-bg);
+				color: var(--tooltip-color);
+				padding: 6px 12px;
+				border-radius: 4px;
+				font-size: 12px;
+				white-space: nowrap;
+				visibility: hidden;
+				opacity: 0;
+				transition: all 0.2s ease;
+			}
+			.overlay-button:hover::before {
+				visibility: visible;
+				opacity: 1;
+			}
+			.overlay-button svg {
+				width: 16px;
+				height: 16px;
+				fill: currentColor;
+			}
+			.api-key-container {
+				position: absolute;
+				bottom: 20px;
+				left: 20px;
+				z-index: 1000;
+				display: flex;
+				flex-direction: column;
+				gap: 10px;
+			}
+			.iframe-container {
+				position: relative;
+				width: 100%;
+				height: 100%;
+				margin-bottom: 4px;
+			}
+			.loading-overlay {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				background: rgba(0, 0, 0, 0.4);
+				display: none;
+				justify-content: center;
+				align-items: center;
+				z-index: 1000;
+			}
+			.loading-spinner {
+				width: 50px;
+				height: 50px;
+				border: 5px solid #f3f3f3;
+				border-top: 5px solid #3498db;
+				border-radius: 50%;
+				animation: spin 1s linear infinite;
+			}
+			@keyframes spin {
+				0% {
+					transform: rotate(0deg);
+				}
+				100% {
+					transform: rotate(360deg);
+				}
+			}
+			iframe {
+				position: absolute;
+				top: 0;
+				left: 0;
+				width: 100%;
+				height: 100%;
+				border: none;
+				background: var(--iframe-bg);
+			}
+
+			.prompt-panel {
+				position: absolute;
+				top: 16px;
+				left: 72px;
+				width: min(340px, calc(100% - 92px));
+				max-height: 40vh;
+				display: none;
+				flex-direction: column;
+				background: var(--panel-bg);
+				border: 1px solid var(--panel-border);
+				border-radius: 10px;
+				box-shadow:
+					0 16px 40px -18px var(--panel-shadow-1),
+					0 6px 16px -8px var(--panel-shadow-2);
+				overflow: hidden;
+				z-index: 1100;
+				color: var(--panel-text);
+				transform: translateY(-6px);
+				opacity: 0;
+				transition:
+					transform 0.18s ease,
+					opacity 0.18s ease;
+			}
+
+			.prompt-panel.visible {
+				display: flex;
+				transform: translateY(0);
+				opacity: 1;
+			}
+
+			.prompt-panel-header {
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				padding: 8px 10px 8px 12px;
+				border-bottom: 1px solid var(--panel-divider);
+				flex-shrink: 0;
+			}
+
+			.prompt-panel-title {
+				display: flex;
+				align-items: center;
+				gap: 8px;
+				font-size: 11px;
+				font-weight: 600;
+				letter-spacing: 0.05em;
+				text-transform: uppercase;
+				color: var(--panel-text-muted);
+			}
+
+			.prompt-panel-badge {
+				display: inline-flex;
+				align-items: center;
+				padding: 1px 8px;
+				border-radius: 999px;
+				background: var(--badge-bg);
+				border: 1px solid var(--badge-border);
+				color: var(--badge-color);
+				font-size: 10px;
+				font-weight: 600;
+				letter-spacing: 0.02em;
+				text-transform: none;
+			}
+
+			.prompt-panel-meta {
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+				padding: 8px 12px 0 12px;
+			}
+
+			.prompt-panel-meta:empty {
+				display: none;
+			}
+
+			.prompt-panel-scope {
+				font-size: 11px;
+				color: var(--panel-text-muted);
+				letter-spacing: 0.02em;
+			}
+
+			.prompt-panel-scope:empty {
+				display: none;
+			}
+
+			.prompt-panel-chips {
+				display: flex;
+				flex-wrap: wrap;
+				gap: 4px;
+			}
+
+			.prompt-panel-chips:empty {
+				display: none;
+			}
+
+			.prompt-panel-chip {
+				display: inline-flex;
+				align-items: center;
+				padding: 2px 8px;
+				border-radius: 999px;
+				background: var(--badge-bg);
+				border: 1px solid var(--badge-border);
+				color: var(--badge-color);
+				font-size: 10px;
+				font-weight: 500;
+				letter-spacing: 0.02em;
+				white-space: nowrap;
+				max-width: 100%;
+				overflow: hidden;
+				text-overflow: ellipsis;
+			}
+
+			.prompt-panel-next {
+				display: none;
+				align-items: center;
+				padding: 1px 7px;
+				border-radius: 999px;
+				background: var(--next-bg);
+				border: 1px solid var(--next-border);
+				color: var(--panel-body-text);
+				font-size: 10px;
+				font-weight: 600;
+				letter-spacing: 0.02em;
+				text-transform: none;
+				cursor: pointer;
+			}
+
+			.prompt-panel-next:hover {
+				background: var(--next-bg-hover);
+				border-color: var(--next-border-hover);
+			}
+
+			.prompt-panel-close {
+				width: 22px;
+				height: 22px;
+				border-radius: 5px;
+				background: transparent;
+				border: 1px solid transparent;
+				color: var(--panel-text-soft);
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+				justify-content: center;
+				transition:
+					background 0.15s ease,
+					color 0.15s ease,
+					border-color 0.15s ease;
+			}
+
+			.prompt-panel-close:hover {
+				background: var(--close-hover-bg);
+				border-color: var(--close-hover-border);
+				color: var(--close-hover-color);
+			}
+
+			.prompt-panel-close svg {
+				width: 12px;
+				height: 12px;
+				stroke: currentColor;
+				fill: none;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+
+			.prompt-panel-body {
+				flex: 1 1 auto;
+				min-height: 0;
+				padding: 10px 12px;
+				font-size: 13px;
+				line-height: 1.5;
+				white-space: pre-wrap;
+				word-break: break-word;
+				overflow-y: auto;
+				overflow-x: auto;
+				color: var(--panel-body-text);
+				font-family: var(
+					--vscode-editor-font-family,
+					ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace
+				);
+				scrollbar-width: thin;
+				scrollbar-color: var(--scroll-thumb) transparent;
+			}
+
+			.prompt-panel-body::-webkit-scrollbar {
+				width: 4px;
+				height: 4px;
+			}
+			.prompt-panel-body::-webkit-scrollbar-track {
+				background: transparent;
+			}
+			.prompt-panel-body::-webkit-scrollbar-thumb {
+				background: var(--scroll-thumb);
+				border-radius: 999px;
+			}
+			.prompt-panel-body::-webkit-scrollbar-thumb:hover {
+				background: var(--scroll-thumb-hover);
+			}
+
+			.prompt-panel-body.markdown {
+				white-space: normal;
+				font-family: var(
+					--vscode-font-family,
+					-apple-system,
+					BlinkMacSystemFont,
+					"Segoe UI",
+					sans-serif
+				);
+			}
+
+			.prompt-panel-body.markdown h1,
+			.prompt-panel-body.markdown h2,
+			.prompt-panel-body.markdown h3 {
+				margin: 0 0 8px 0;
+				color: var(--panel-headline);
+				line-height: 1.25;
+			}
+
+			.prompt-panel-body.markdown h1 {
+				font-size: 19px;
+			}
+			.prompt-panel-body.markdown h2 {
+				font-size: 16px;
+			}
+			.prompt-panel-body.markdown h3 {
+				font-size: 14px;
+			}
+
+			.prompt-panel-body.markdown p,
+			.prompt-panel-body.markdown ul,
+			.prompt-panel-body.markdown ol,
+			.prompt-panel-body.markdown blockquote,
+			.prompt-panel-body.markdown pre {
+				margin: 0 0 10px 0;
+			}
+
+			.prompt-panel-body.markdown ul,
+			.prompt-panel-body.markdown ol {
+				padding-left: 18px;
+			}
+
+			.prompt-panel-body.markdown li {
+				margin: 3px 0;
+			}
+
+			.prompt-panel-body.markdown code {
+				padding: 1px 4px;
+				border-radius: 4px;
+				background: var(--code-bg);
+				font-family: var(
+					--vscode-editor-font-family,
+					ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace
+				);
+				font-size: 0.95em;
+			}
+
+			.prompt-panel-body.markdown pre {
+				padding: 9px 10px;
+				border-radius: 7px;
+				background: var(--pre-bg);
+				border: 1px solid var(--pre-border);
+				overflow-x: auto;
+			}
+
+			.prompt-panel-body.markdown pre code {
+				padding: 0;
+				background: transparent;
+			}
+
+			.prompt-panel-body.markdown blockquote {
+				padding-left: 10px;
+				border-left: 2px solid var(--quote-border);
+				color: var(--panel-quote);
+			}
+
+			.prompt-panel-body.markdown a {
+				color: var(--link-color);
+				text-decoration: none;
+			}
+
+			.prompt-panel-body.markdown a:hover {
+				text-decoration: underline;
+			}
+
+			.prompt-panel-footer {
+				display: flex;
+				align-items: center;
+				justify-content: flex-end;
+				gap: 5px;
+				padding: 6px 8px 8px 8px;
+				border-top: 1px solid var(--panel-divider);
+				flex-shrink: 0;
+			}
+
+			.prompt-panel-feedback {
+				font-size: 11px;
+				color: var(--panel-text-soft);
+				opacity: 0;
+				transition: opacity 0.2s ease;
+			}
+
+			.prompt-panel-feedback.visible {
+				opacity: 1;
+			}
+
+			.prompt-panel-notice {
+				display: none;
+				padding: 7px 12px;
+				border-bottom: 1px solid var(--panel-divider);
+				color: var(--panel-quote);
+				font-size: 11px;
+				line-height: 1.35;
+				background: var(--notice-bg);
+			}
+
+			.prompt-panel-notice.visible {
+				display: block;
+			}
+
+			.prompt-panel-notice.blinking {
+				animation: prompt-panel-blink 1.1s ease-in-out infinite;
+			}
+
+			@keyframes prompt-panel-blink {
+				0%,
+				100% {
+					opacity: 0.45;
+				}
+				50% {
+					opacity: 1;
+				}
+			}
+
+			.prompt-panel-copy {
+				display: inline-flex;
+				align-items: center;
+				gap: 5px;
+				padding: 4px 7px;
+				font-size: 11px;
+				border-radius: 6px;
+				background: var(--copy-bg);
+				border: 1px solid var(--copy-border);
+				color: var(--panel-text);
+				cursor: pointer;
+				flex: 0 0 auto;
+				white-space: nowrap;
+				transition:
+					background 0.15s ease,
+					border-color 0.15s ease,
+					transform 0.1s ease;
+			}
+
+			.prompt-panel-copy:hover {
+				background: var(--copy-bg-hover);
+				border-color: var(--copy-border-hover);
+			}
+
+			.prompt-panel-copy:active {
+				transform: translateY(1px);
+			}
+
+			.prompt-panel-copy svg {
+				width: 11px;
+				height: 11px;
+				stroke: currentColor;
+				fill: none;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+
+			.export-preview-panel {
+				width: min(480px, calc(100% - 92px));
+				max-height: 70vh;
+			}
+
+			.export-preview-name {
+				display: flex;
+				flex-direction: column;
+				gap: 4px;
+				padding: 10px 12px 6px 12px;
+				border-bottom: 1px solid var(--panel-divider);
+			}
+
+			.export-preview-name label {
+				font-size: 10px;
+				font-weight: 600;
+				letter-spacing: 0.06em;
+				text-transform: uppercase;
+				color: var(--panel-text-muted);
+			}
+
+			.export-preview-name input {
+				box-sizing: border-box;
+				width: 100%;
+				padding: 6px 8px;
+				font-size: 12px;
+				border-radius: 5px;
+				background: var(--copy-bg);
+				border: 1px solid var(--copy-border);
+				color: var(--panel-text);
+				font-family: var(
+					--vscode-font-family,
+					-apple-system,
+					BlinkMacSystemFont,
+					"Segoe UI",
+					sans-serif
+				);
+				outline: none;
+				transition:
+					border-color 0.15s ease,
+					background 0.15s ease;
+			}
+
+			.export-preview-name input:focus {
+				border-color: var(--copy-border-hover);
+				background: var(--copy-bg-hover);
+			}
+
+			.export-preview-text {
+				box-sizing: border-box;
+				flex: 1 1 auto;
+				min-height: 160px;
+				margin: 0;
+				padding: 10px 12px;
+				font-size: 12px;
+				line-height: 1.5;
+				background: transparent;
+				border: none;
+				outline: none;
+				resize: none;
+				color: var(--panel-body-text);
+				font-family: var(
+					--vscode-editor-font-family,
+					ui-monospace,
+					SFMono-Regular,
+					Menlo,
+					monospace
+				);
+				scrollbar-width: thin;
+				scrollbar-color: var(--scroll-thumb) transparent;
+				white-space: pre-wrap;
+			}
+
+			.export-preview-text::-webkit-scrollbar {
+				width: 4px;
+			}
+			.export-preview-text::-webkit-scrollbar-thumb {
+				background: var(--scroll-thumb);
+				border-radius: 999px;
+			}
+			.export-preview-text::-webkit-scrollbar-thumb:hover {
+				background: var(--scroll-thumb-hover);
+			}
+
+			.export-preview-submit {
+				background: var(--badge-bg);
+				border-color: var(--badge-border);
+				color: var(--badge-color);
+			}
+
+			.export-preview-submit:hover {
+				background: var(--badge-bg);
+				border-color: var(--badge-border);
+				filter: brightness(1.1);
+			}
+
+			.export-preview-submit[disabled] {
+				opacity: 0.55;
+				cursor: progress;
+			}
+
+			.prompt-panel-feedback.error {
+				color: #ff7d7d;
+				opacity: 1;
+			}
+
+			body[data-theme="light"] .prompt-panel-feedback.error {
+				color: #c0392b;
+			}
+		</style>
+	</head>
+	<body>
+		<div class="button-container">
+			<button
+				id="analyzeButton"
+				class="overlay-button"
+				data-tooltip="Analyze Current Document"
+			>
+				<svg viewBox="0 0 24 24">
+					<path
+						d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"
+					/>
+				</svg>
+			</button>
+
+			<button
+				id="copyButton"
+				class="overlay-button"
+				data-tooltip="Copy Graph or Selection to Clipboard"
+			>
+				<svg viewBox="0 0 24 24">
+					<path
+						d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+					/>
+				</svg>
+			</button>
+
+			<button
+				id="exportButton"
+				class="overlay-button"
+				data-tooltip="Export Analyzed Content to InfraNodus"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+				>
+					<path d="M12 3v12" />
+					<path d="m7 8 5-5 5 5" />
+					<path d="M5 21h14" />
+				</svg>
+			</button>
+		</div>
+		<div class="api-key-container">
+			<button
+				id="settingsButton"
+				class="overlay-button"
+				data-tooltip="Open InfraNodus Extension Settings"
+			>
+				<svg viewBox="0 0 24 24">
+					<path
+						d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.37-.31-.6-.22l-2.49 1a7.28 7.28 0 0 0-1.69-.98L14.5 2.42A.49.49 0 0 0 14 2h-4c-.25 0-.46.18-.5.42L9.12 5.07c-.61.24-1.18.56-1.69.98l-2.49-1a.5.5 0 0 0-.6.22l-2 3.46a.5.5 0 0 0 .12.64l2.11 1.65c-.05.32-.08.65-.08.98s.03.66.08.98l-2.11 1.65a.5.5 0 0 0-.12.64l2 3.46c.12.22.37.31.6.22l2.49-1c.51.4 1.08.73 1.69.98l.38 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.38-2.65c.61-.24 1.18-.56 1.69-.98l2.49 1c.23.08.48 0 .6-.22l2-3.46a.5.5 0 0 0-.12-.64l-2.11-1.65zM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5z"
+					/>
+				</svg>
+			</button>
+			<button
+				id="apiKeyButton"
+				class="overlay-button"
+				data-tooltip="Set InfraNodus API Key"
+			>
+				<svg viewBox="0 0 24 24">
+					<path
+						d="M22 19h-6v-4h-2.68c-1.14 2.42-3.6 4-6.32 4-3.86 0-7-3.14-7-7s3.14-7 7-7c2.72 0 5.17 1.58 6.32 4H24v6h-2v4zm-4-2h2v-4h2v-2H11.94l-.23-.67C11.01 8.34 9.11 7 7 7c-2.76 0-5 2.24-5 5s2.24 5 5 5c2.11 0 4.01-1.34 4.71-3.33l.23-.67H18v4zM7 15c-1.65 0-3-1.35-3-3s1.35-3 3-3 3 1.35 3 3-1.35 3-3 3zm0-4c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"
+					/>
+				</svg>
+			</button>
+		</div>
+		<div class="iframe-container margin-right: 8px;">
+			<div class="loading-overlay" id="loadingOverlay">
+				<div class="loading-spinner"></div>
+			</div>
+			<iframe id="graphFrame" src="about:blank" frameborder="0"></iframe>
+
+			<div
+				id="promptPanel"
+				class="prompt-panel"
+				role="dialog"
+				aria-label="AI Prompt"
+			>
+				<div class="prompt-panel-header">
+					<div class="prompt-panel-title">
+						<span id="promptPanelTitle">AI Prompt</span>
+						<span id="promptPanelBadge" class="prompt-panel-badge">Idea</span>
+						<button
+							id="promptPanelNextAdvice"
+							class="prompt-panel-next"
+							title="Show next AI response"
+						>
+							Next
+						</button>
+					</div>
+					<button
+						id="promptPanelClose"
+						class="prompt-panel-close"
+						title="Close"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<line x1="6" y1="6" x2="18" y2="18" />
+							<line x1="18" y1="6" x2="6" y2="18" />
+						</svg>
+					</button>
+				</div>
+				<div id="promptPanelNotice" class="prompt-panel-notice"></div>
+				<div id="promptPanelBody" class="prompt-panel-body"></div>
+				<div class="prompt-panel-footer">
+					<span id="promptPanelFeedback" class="prompt-panel-feedback"
+						>Copied to clipboard</span
+					>
+					<button
+						id="promptPanelFind"
+						class="prompt-panel-copy"
+						title="Find related statements in your files"
+						style="display: none"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<circle cx="11" cy="11" r="7" />
+							<line x1="21" y1="21" x2="16.65" y2="16.65" />
+						</svg>
+						Find in Files
+					</button>
+					<button
+						id="promptPanelToggle"
+						class="prompt-panel-copy"
+						title="Switch between response and prompt"
+						style="display: none"
+					>
+						AI Response
+					</button>
+					<button
+						id="promptPanelExport"
+						class="prompt-panel-copy"
+						title="Export this AI response to InfraNodus (or selected text if any)"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="M12 3v12" />
+							<path d="m7 8 5-5 5 5" />
+							<path d="M5 21h14" />
+						</svg>
+						Export
+					</button>
+					<button
+						id="promptPanelCopy"
+						class="prompt-panel-copy"
+						title="Copy prompt to clipboard"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+							<path
+								d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+							/>
+							<path d="M8 4h8" />
+						</svg>
+						Copy
+					</button>
+				</div>
+			</div>
+
+			<div
+				id="contextPanel"
+				class="prompt-panel"
+				role="dialog"
+				aria-label="Currently Analyzed Context"
+			>
+				<div class="prompt-panel-header">
+					<div class="prompt-panel-title">Currently Analyzed Context</div>
+					<button
+						id="contextPanelClose"
+						class="prompt-panel-close"
+						title="Close"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<line x1="6" y1="6" x2="18" y2="18" />
+							<line x1="18" y1="6" x2="6" y2="18" />
+						</svg>
+					</button>
+				</div>
+				<div id="contextPanelMeta" class="prompt-panel-meta">
+					<div id="contextPanelScope" class="prompt-panel-scope"></div>
+					<div id="contextPanelChips" class="prompt-panel-chips"></div>
+				</div>
+				<div id="contextPanelBody" class="prompt-panel-body"></div>
+				<div class="prompt-panel-footer">
+					<span id="contextPanelFeedback" class="prompt-panel-feedback"
+						>Copied to clipboard</span
+					>
+					<button
+						id="contextPanelExport"
+						class="prompt-panel-copy"
+						title="Export this context to InfraNodus"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<path d="M12 3v12" />
+							<path d="m7 8 5-5 5 5" />
+							<path d="M5 21h14" />
+						</svg>
+						Export to InfraNodus
+					</button>
+					<button
+						id="contextPanelCopy"
+						class="prompt-panel-copy"
+						title="Copy analyzed context to clipboard"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<rect width="8" height="4" x="8" y="2" rx="1" ry="1" />
+							<path
+								d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"
+							/>
+							<path d="M8 4h8" />
+						</svg>
+						Copy
+					</button>
+				</div>
+			</div>
+
+			<div
+				id="exportPreviewPanel"
+				class="prompt-panel export-preview-panel"
+				role="dialog"
+				aria-label="Export to InfraNodus"
+			>
+				<div class="prompt-panel-header">
+					<div class="prompt-panel-title">Export to InfraNodus</div>
+					<button
+						id="exportPreviewClose"
+						class="prompt-panel-close"
+						title="Close"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<line x1="6" y1="6" x2="18" y2="18" />
+							<line x1="18" y1="6" x2="6" y2="18" />
+						</svg>
+					</button>
+				</div>
+				<div class="export-preview-name">
+					<label for="exportPreviewName">Graph name</label>
+					<input
+						id="exportPreviewName"
+						type="text"
+						placeholder="my-vscode-context"
+						autocomplete="off"
+						spellcheck="false"
+					/>
+				</div>
+				<textarea
+					id="exportPreviewText"
+					class="export-preview-text"
+					spellcheck="false"
+					placeholder="Content to export..."
+				></textarea>
+				<div class="prompt-panel-footer">
+					<span id="exportPreviewFeedback" class="prompt-panel-feedback"></span>
+					<button
+						id="exportPreviewCancel"
+						class="prompt-panel-copy"
+						title="Cancel"
+					>
+						Cancel
+					</button>
+					<button
+						id="exportPreviewSubmit"
+						class="prompt-panel-copy export-preview-submit"
+						title="Submit to InfraNodus"
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+							<path d="M12 3v12" />
+							<path d="m7 8 5-5 5 5" />
+							<path d="M5 21h14" />
+						</svg>
+						Submit
+					</button>
+				</div>
+			</div>
+		</div>
+		<script>
+			const vscode = acquireVsCodeApi();
+
+			function applyTheme(theme) {
+				const resolved = theme === "dark" ? "dark" : "light";
+				document.body.setAttribute("data-theme", resolved);
+			}
+
+			// Apply persisted theme as early as possible to avoid a flash of wrong-theme buttons
+			try {
+				const earlyState = vscode.getState();
+				applyTheme(
+					earlyState && earlyState.infraNodusTheme === "dark"
+						? "dark"
+						: "light",
+				);
+			} catch (e) {
+				applyTheme("light");
+			}
+
+			console.log("Activated InfraNodus Webview iFrame");
+			document.addEventListener("DOMContentLoaded", (event) => {
+				// Set up button click handlers
+				document
+					.getElementById("analyzeButton")
+					.addEventListener("click", () => {
+						vscode.postMessage({
+							command: "reload",
+						});
+					});
+
+				document.getElementById("copyButton").addEventListener("click", () => {
+					vscode.postMessage({
+						command: "copyGraphToClipboard",
+					});
+				});
+
+				document
+					.getElementById("exportButton")
+					.addEventListener("click", () => {
+						vscode.postMessage({
+							command: "requestExportPreview",
+						});
+					});
+
+				document
+					.getElementById("settingsButton")
+					.addEventListener("click", () => {
+						vscode.postMessage({
+							command: "openSettings",
+						});
+					});
+
+				document
+					.getElementById("apiKeyButton")
+					.addEventListener("click", () => {
+						vscode.postMessage({
+							command: "setApiKey",
+						});
+					});
+
+				const promptPanel = document.getElementById("promptPanel");
+				const promptPanelTitle = document.getElementById("promptPanelTitle");
+				const promptPanelBadge = document.getElementById("promptPanelBadge");
+				const promptPanelBody = document.getElementById("promptPanelBody");
+				const promptPanelClose = document.getElementById("promptPanelClose");
+				const promptPanelCopy = document.getElementById("promptPanelCopy");
+				const promptPanelExport = document.getElementById("promptPanelExport");
+				const promptPanelFind = document.getElementById("promptPanelFind");
+				const promptPanelToggle = document.getElementById("promptPanelToggle");
+				const promptPanelNextAdvice = document.getElementById(
+					"promptPanelNextAdvice",
+				);
+				const promptPanelNotice = document.getElementById("promptPanelNotice");
+				const promptPanelFeedback = document.getElementById(
+					"promptPanelFeedback",
+				);
+				const contextPanel = document.getElementById("contextPanel");
+				const contextPanelBody = document.getElementById("contextPanelBody");
+				const contextPanelClose = document.getElementById("contextPanelClose");
+				const contextPanelCopy = document.getElementById("contextPanelCopy");
+				const contextPanelExport =
+					document.getElementById("contextPanelExport");
+				const contextPanelFeedback = document.getElementById(
+					"contextPanelFeedback",
+				);
+				const contextPanelChips = document.getElementById("contextPanelChips");
+				const contextPanelScope = document.getElementById("contextPanelScope");
+				const exportPreviewPanel =
+					document.getElementById("exportPreviewPanel");
+				const exportPreviewName = document.getElementById("exportPreviewName");
+				const exportPreviewText = document.getElementById("exportPreviewText");
+				const exportPreviewClose =
+					document.getElementById("exportPreviewClose");
+				const exportPreviewCancel = document.getElementById(
+					"exportPreviewCancel",
+				);
+				const exportPreviewSubmit = document.getElementById(
+					"exportPreviewSubmit",
+				);
+				const exportPreviewFeedback = document.getElementById(
+					"exportPreviewFeedback",
+				);
+				let exportPreviewSubmitting = false;
+				let currentPromptText = "";
+				let currentResponseTexts = [];
+				let currentResponseIndex = 0;
+				let currentPromptLabel = "Prompt";
+				let currentPromptView = "prompt";
+				let currentAdviceRequestId = "";
+				let currentModelToUse = "gpt-5.4";
+				let isAdviceLoading = false;
+				let adviceError = "";
+				let currentContextText = "";
+
+				function escapeHtml(value) {
+					return String(value || "")
+						.replace(/&/g, "&amp;")
+						.replace(/</g, "&lt;")
+						.replace(/>/g, "&gt;")
+						.replace(/"/g, "&quot;")
+						.replace(/'/g, "&#39;");
+				}
+
+				function renderInlineMarkdown(value) {
+					const codeSpans = [];
+					let html = escapeHtml(value).replace(/`([^`]+)`/g, (_, code) => {
+						const token = `__CODE_SPAN_${codeSpans.length}__`;
+						codeSpans.push(`<code>${code}</code>`);
+						return token;
+					});
+
+					html = html
+						.replace(
+							/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+							'<a href="$2">$1</a>',
+						)
+						.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+						.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+
+					codeSpans.forEach((code, index) => {
+						html = html.replace(`__CODE_SPAN_${index}__`, code);
+					});
+
+					return html;
+				}
+
+				function renderMarkdown(value) {
+					const lines = String(value || "")
+						.replace(/\r\n/g, "\n")
+						.split("\n");
+					const blocks = [];
+					let paragraph = [];
+					let listItems = [];
+					let listType = "";
+					let inCodeBlock = false;
+					let codeLines = [];
+
+					function flushParagraph() {
+						if (!paragraph.length) return;
+						blocks.push(`<p>${renderInlineMarkdown(paragraph.join(" "))}</p>`);
+						paragraph = [];
+					}
+
+					function flushList() {
+						if (!listItems.length) return;
+						const tag = listType === "ol" ? "ol" : "ul";
+						blocks.push(
+							`<${tag}>${listItems.map((item) => `<li>${renderInlineMarkdown(item)}</li>`).join("")}</${tag}>`,
+						);
+						listItems = [];
+						listType = "";
+					}
+
+					function flushCodeBlock() {
+						if (!codeLines.length) return;
+						blocks.push(
+							`<pre><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`,
+						);
+						codeLines = [];
+					}
+
+					for (const line of lines) {
+						if (/^\s*```/.test(line)) {
+							if (inCodeBlock) {
+								flushCodeBlock();
+								inCodeBlock = false;
+							} else {
+								flushParagraph();
+								flushList();
+								inCodeBlock = true;
+							}
+							continue;
+						}
+
+						if (inCodeBlock) {
+							codeLines.push(line);
+							continue;
+						}
+
+						if (!line.trim()) {
+							flushParagraph();
+							flushList();
+							continue;
+						}
+
+						const heading = line.match(/^(#{1,3})\s+(.+)$/);
+						if (heading) {
+							flushParagraph();
+							flushList();
+							blocks.push(
+								`<h${heading[1].length}>${renderInlineMarkdown(heading[2])}</h${heading[1].length}>`,
+							);
+							continue;
+						}
+
+						const unorderedListItem = line.match(/^\s*[-*]\s+(.+)$/);
+						const orderedListItem = line.match(/^\s*\d+\.\s+(.+)$/);
+						if (unorderedListItem || orderedListItem) {
+							flushParagraph();
+							const nextListType = orderedListItem ? "ol" : "ul";
+							if (listType && listType !== nextListType) {
+								flushList();
+							}
+							listType = nextListType;
+							listItems.push((orderedListItem || unorderedListItem)[1]);
+							continue;
+						}
+
+						const quote = line.match(/^\s*>\s?(.+)$/);
+						if (quote) {
+							flushParagraph();
+							flushList();
+							blocks.push(
+								`<blockquote>${renderInlineMarkdown(quote[1])}</blockquote>`,
+							);
+							continue;
+						}
+
+						paragraph.push(line.trim());
+					}
+
+					if (inCodeBlock) {
+						flushCodeBlock();
+					}
+					flushParagraph();
+					flushList();
+
+					return blocks.join("\n");
+				}
+
+				function renderPromptPanel() {
+					const showingResponse = currentPromptView === "response";
+					const currentResponseText =
+						currentResponseTexts[currentResponseIndex] || "";
+					const visibleText = showingResponse
+						? currentResponseText
+						: currentPromptText;
+					promptPanelTitle.textContent = showingResponse
+						? "AI Response"
+						: "AI Prompt";
+					promptPanelBadge.textContent =
+						showingResponse && currentResponseTexts.length > 1
+							? `Response ${currentResponseIndex + 1}/${currentResponseTexts.length}`
+							: showingResponse
+								? "Response"
+								: currentPromptLabel;
+					if (showingResponse) {
+						promptPanelBody.classList.add("markdown");
+						promptPanelBody.innerHTML = renderMarkdown(visibleText);
+					} else {
+						promptPanelBody.classList.remove("markdown");
+						promptPanelBody.textContent = visibleText;
+					}
+					promptPanelFind.style.display = !showingResponse
+						? "inline-flex"
+						: "none";
+					promptPanelToggle.style.display =
+						currentResponseTexts.length > 0 ? "inline-flex" : "none";
+					promptPanelToggle.textContent = showingResponse
+						? "Show Prompt"
+						: "AI Response";
+					promptPanelNextAdvice.style.display =
+						showingResponse && currentResponseTexts.length > 1
+							? "inline-flex"
+							: "none";
+					promptPanelNextAdvice.textContent = "Next";
+					promptPanelCopy.title = showingResponse
+						? "Copy response to clipboard"
+						: "Copy prompt to clipboard";
+
+					if (isAdviceLoading) {
+						promptPanelNotice.textContent = `Getting response from ${currentModelToUse}...`;
+						promptPanelNotice.classList.add("visible");
+						promptPanelNotice.classList.add("blinking");
+					} else if (adviceError) {
+						promptPanelNotice.textContent = adviceError;
+						promptPanelNotice.classList.add("visible");
+						promptPanelNotice.classList.remove("blinking");
+					} else {
+						promptPanelNotice.textContent = "";
+						promptPanelNotice.classList.remove("visible");
+						promptPanelNotice.classList.remove("blinking");
+					}
+
+					promptPanelBody.scrollTop = 0;
+				}
+
+				function showPromptPanel({
+					label,
+					action,
+					prompt,
+					canFindInFiles,
+					adviceRequestId,
+					isAdviceLoading: loadingAdvice,
+					modelToUse,
+				}) {
+					currentPromptText = prompt || "";
+					currentResponseTexts = [];
+					currentResponseIndex = 0;
+					currentPromptLabel = label || action || "Prompt";
+					currentPromptView = "prompt";
+					currentAdviceRequestId = adviceRequestId || "";
+					currentModelToUse = modelToUse || "gpt-5.4";
+					isAdviceLoading = !!loadingAdvice;
+					adviceError = "";
+					renderPromptPanel();
+					contextPanel.classList.remove("visible");
+					promptPanel.classList.add("visible");
+				}
+
+				function showGraphAiAdvice({ adviceRequestId, responses }) {
+					if (
+						adviceRequestId &&
+						currentAdviceRequestId &&
+						adviceRequestId !== currentAdviceRequestId
+					) {
+						return;
+					}
+					currentResponseTexts = Array.isArray(responses)
+						? responses.filter(Boolean)
+						: [];
+					currentResponseIndex = 0;
+					currentPromptView = "response";
+					isAdviceLoading = false;
+					adviceError = "";
+					renderPromptPanel();
+					promptPanel.classList.add("visible");
+				}
+
+				function showGraphAiAdviceError({ adviceRequestId, error }) {
+					if (
+						adviceRequestId &&
+						currentAdviceRequestId &&
+						adviceRequestId !== currentAdviceRequestId
+					) {
+						return;
+					}
+					isAdviceLoading = false;
+					adviceError = error
+						? `Could not load response: ${error}`
+						: "Could not load response.";
+					renderPromptPanel();
+				}
+
+				function hidePromptPanel() {
+					promptPanel.classList.remove("visible");
+				}
+
+				function showContextPanel({
+					contextText,
+					chips,
+					scopeLabel,
+					emptyReason,
+				}) {
+					currentContextText = contextText || "";
+					if (currentContextText) {
+						contextPanelBody.textContent = currentContextText;
+					} else if (emptyReason) {
+						contextPanelBody.textContent = emptyReason;
+					} else {
+						contextPanelBody.textContent =
+							"No analyzed context available yet. Analyze a document first.";
+					}
+
+					contextPanelScope.textContent = scopeLabel || "";
+
+					contextPanelChips.innerHTML = "";
+					const chipList = Array.isArray(chips) ? chips : [];
+					chipList.forEach((chip) => {
+						if (!chip) return;
+						const el = document.createElement("span");
+						el.className = "prompt-panel-chip";
+						el.textContent = chip.label || "";
+						if (chip.tooltip) el.title = chip.tooltip;
+						contextPanelChips.appendChild(el);
+					});
+
+					promptPanel.classList.remove("visible");
+					contextPanel.classList.add("visible");
+					contextPanelBody.scrollTop = 0;
+				}
+
+				function hideContextPanel() {
+					contextPanel.classList.remove("visible");
+				}
+
+				promptPanelClose.addEventListener("click", hidePromptPanel);
+				contextPanelClose.addEventListener("click", hideContextPanel);
+
+				promptPanelCopy.addEventListener("click", async () => {
+					const currentResponseText =
+						currentResponseTexts[currentResponseIndex] || "";
+					const textToCopy =
+						currentPromptView === "response"
+							? currentResponseText
+							: currentPromptText;
+					if (!textToCopy) return;
+					try {
+						await navigator.clipboard.writeText(textToCopy);
+						promptPanelFeedback.classList.add("visible");
+						setTimeout(
+							() => promptPanelFeedback.classList.remove("visible"),
+							1500,
+						);
+					} catch (err) {
+						console.error("Failed to copy prompt panel content:", err);
+					}
+				});
+
+				promptPanelFind.addEventListener("click", () => {
+					vscode.postMessage({ command: "findInFiles" });
+				});
+
+				promptPanelToggle.addEventListener("click", () => {
+					if (currentResponseTexts.length === 0) return;
+					currentPromptView =
+						currentPromptView === "response" ? "prompt" : "response";
+					renderPromptPanel();
+				});
+
+				promptPanelNextAdvice.addEventListener("click", () => {
+					if (currentResponseTexts.length <= 1) return;
+					currentResponseIndex =
+						(currentResponseIndex + 1) % currentResponseTexts.length;
+					renderPromptPanel();
+				});
+
+				contextPanelCopy.addEventListener("click", async () => {
+					if (!currentContextText) return;
+					try {
+						await navigator.clipboard.writeText(currentContextText);
+						contextPanelFeedback.classList.add("visible");
+						setTimeout(
+							() => contextPanelFeedback.classList.remove("visible"),
+							1500,
+						);
+					} catch (err) {
+						console.error("Failed to copy analyzed context:", err);
+					}
+				});
+
+				contextPanelExport.addEventListener("click", () => {
+					vscode.postMessage({ command: "exportAnalyzedContextToInfraNodus" });
+				});
+
+				promptPanelExport.addEventListener("click", () => {
+					const showingResponse = currentPromptView === "response";
+					const currentResponseText =
+						currentResponseTexts[currentResponseIndex] || "";
+					const fullText = showingResponse
+						? currentResponseText
+						: currentPromptText;
+
+					// Prefer the user's selection inside the panel body, if any.
+					let textToExport = fullText;
+					let usingSelection = false;
+					try {
+						const sel = window.getSelection();
+						if (sel && !sel.isCollapsed) {
+							const selText = (sel.toString() || "").trim();
+							if (selText) {
+								// Verify selection is inside the panel body
+								let node = sel.anchorNode;
+								while (
+									node &&
+									node !== promptPanelBody &&
+									node !== document.body
+								) {
+									node = node.parentNode;
+								}
+								if (node === promptPanelBody) {
+									textToExport = sel.toString();
+									usingSelection = true;
+								}
+							}
+						}
+					} catch (err) {
+						// Selection API unavailable — fall back to full text.
+					}
+
+					if (!textToExport || !textToExport.trim()) {
+						promptPanelFeedback.textContent = "Nothing to export yet";
+						promptPanelFeedback.classList.add("visible");
+						setTimeout(() => {
+							promptPanelFeedback.textContent = "Copied to clipboard";
+							promptPanelFeedback.classList.remove("visible");
+						}, 1800);
+						return;
+					}
+
+					vscode.postMessage({
+						command: "requestAiAdviceExportPreview",
+						text: textToExport,
+						adviceKind: currentPromptLabel || "advice",
+						view: showingResponse ? "response" : "prompt",
+						usingSelection,
+					});
+				});
+
+				function setExportPreviewFeedback(text, isError) {
+					exportPreviewFeedback.textContent = text || "";
+					exportPreviewFeedback.classList.toggle("error", !!isError);
+					exportPreviewFeedback.classList.toggle("visible", !!text);
+				}
+
+				function setExportPreviewSubmitting(value) {
+					exportPreviewSubmitting = !!value;
+					exportPreviewSubmit.disabled = exportPreviewSubmitting;
+					if (exportPreviewSubmitting) {
+						setExportPreviewFeedback("Exporting…", false);
+					}
+				}
+
+				function showExportPreview({ defaultName, text }) {
+					promptPanel.classList.remove("visible");
+					contextPanel.classList.remove("visible");
+					exportPreviewName.value = defaultName || "vscode-context";
+					exportPreviewText.value = text || "";
+					setExportPreviewFeedback("", false);
+					setExportPreviewSubmitting(false);
+					exportPreviewPanel.classList.add("visible");
+					setTimeout(() => exportPreviewName.focus(), 30);
+				}
+
+				function hideExportPreview() {
+					exportPreviewPanel.classList.remove("visible");
+					setExportPreviewSubmitting(false);
+				}
+
+				exportPreviewClose.addEventListener("click", hideExportPreview);
+				exportPreviewCancel.addEventListener("click", hideExportPreview);
+
+				exportPreviewSubmit.addEventListener("click", () => {
+					if (exportPreviewSubmitting) return;
+					const name = (exportPreviewName.value || "").trim();
+					const text = exportPreviewText.value || "";
+					if (!name) {
+						setExportPreviewFeedback("Graph name is required", true);
+						exportPreviewName.focus();
+						return;
+					}
+					if (!text.trim()) {
+						setExportPreviewFeedback("Cannot export empty content", true);
+						exportPreviewText.focus();
+						return;
+					}
+					setExportPreviewSubmitting(true);
+					vscode.postMessage({
+						command: "submitExportToInfraNodus",
+						name,
+						text,
+					});
+				});
+
+				document.addEventListener("keydown", (e) => {
+					if (e.key === "Escape" && promptPanel.classList.contains("visible")) {
+						hidePromptPanel();
+					}
+					if (
+						e.key === "Escape" &&
+						contextPanel.classList.contains("visible")
+					) {
+						hideContextPanel();
+					}
+					if (
+						e.key === "Escape" &&
+						exportPreviewPanel.classList.contains("visible")
+					) {
+						hideExportPreview();
+					}
+				});
+
+				// Listen for messages from the iframe
+				window.addEventListener("message", (event) => {
+					const message = event.data;
+
+					// Log all messages from iframe
+					// console.log('Message from iframe for webview:', message);
+
+					if (message.type === "LOAD_JSON") {
+						if (message.payload && message.payload.error) {
+							vscode.postMessage({
+								command: "showError",
+								error: message.payload.error,
+							});
+							return;
+						}
+						// Store the data in vscode state
+						const currentState = vscode.getState() || {};
+						vscode.setState({
+							...currentState,
+							graphData: message.payload,
+						});
+
+						// Forward the message to the iframe
+						document.getElementById("graphFrame").contentWindow.postMessage(
+							{
+								type: "LOAD_JSON",
+								payload: message.payload,
+							},
+							"*",
+						);
+					}
+
+					if (message.type === "UPDATE_SELECTED_NODES") {
+						vscode.postMessage({
+							command: "forwardToClipboard",
+							type: "UPDATE_SELECTED_NODES",
+							payload: {
+								selectedNodes: message.payload, // for compability with the old iframe API version
+								connectedNodes: message.connectedNodes,
+							},
+						});
+					}
+
+					if (message.type === "UPDATE_GROUPS") {
+						vscode.postMessage({
+							command: "forwardToClipboard",
+							type: "UPDATE_GROUPS",
+							payload: {
+								selectedClusters: message.payload,
+							},
+						});
+					}
+
+					if (message.type === "EXTERNAL_ACTION") {
+						vscode.postMessage({
+							command: "processExternalAction",
+							type: "EXTERNAL_ACTION",
+							payload: {
+								action: message.payload,
+								meta: message.meta,
+							},
+						});
+					}
+				});
+
+				// Add this to capture iframe's console logs
+				const iframe = document.getElementById("graphFrame");
+				iframe.onload = () => {
+					// Inject console logger into iframe
+					iframe.contentWindow?.postMessage(
+						{
+							type: "INJECT_LOGGER",
+							payload: `
                         (function() {
                             const originalConsole = {
                                 log: console.log,
@@ -1399,234 +1670,253 @@
                             console.info = wrapConsole('info');
                             console.debug = wrapConsole('debug');
                         })();
-                    `
-                }, '*');
-            };
+                    `,
+						},
+						"*",
+					);
+				};
 
-            // Handle forwarded console logs
-            window.addEventListener('message', event => {
-                const message = event.data;
-                if (message.type === 'CONSOLE_LOG') {
-                    const { method, args } = message;
-                    switch (method) {
-                        case 'log':
-                            console.log('[iframe]:', ...args);
-                            break;
-                        case 'warn':
-                            console.warn('[iframe]:', ...args);
-                            break;
-                        case 'error':
-                            console.error('[iframe]:', ...args);
-                            break;
-                        case 'info':
-                            console.info('[iframe]:', ...args);
-                            break;
-                        case 'debug':
-                            console.debug('[iframe]:', ...args);
-                            break;
-                    }
-                } else if (message.type === 'SET_IFRAME_URL') {
-                    const theme = message.theme === 'dark' || message.theme === 'light' ? message.theme : 'light';
-                    applyTheme(theme);
-                    const iframeUrl = message.url
-                        + '?iframe=true&action=search&app=vscode'
-                        + '&theme=' + theme
-                        + (message.userId ? '&user=' + message.userId : '');
-                    // Store the URL and theme using vscode state
-                    vscode.setState({ infraNodusIframeUrl: iframeUrl, infraNodusTheme: theme });
-                    document.getElementById('graphFrame').src = iframeUrl;
-                }
-            });
+				// Handle forwarded console logs
+				window.addEventListener("message", (event) => {
+					const message = event.data;
+					if (message.type === "CONSOLE_LOG") {
+						const { method, args } = message;
+						switch (method) {
+							case "log":
+								console.log("[iframe]:", ...args);
+								break;
+							case "warn":
+								console.warn("[iframe]:", ...args);
+								break;
+							case "error":
+								console.error("[iframe]:", ...args);
+								break;
+							case "info":
+								console.info("[iframe]:", ...args);
+								break;
+							case "debug":
+								console.debug("[iframe]:", ...args);
+								break;
+						}
+					} else if (message.type === "SET_IFRAME_URL") {
+						const theme =
+							message.theme === "dark" || message.theme === "light"
+								? message.theme
+								: "light";
+						applyTheme(theme);
+						const iframeUrl =
+							message.url +
+							"?iframe=true&action=search&app=vscode" +
+							"&theme=" +
+							theme +
+							(message.userId ? "&user=" + message.userId : "");
+						// Store the URL and theme using vscode state
+						vscode.setState({
+							infraNodusIframeUrl: iframeUrl,
+							infraNodusTheme: theme,
+						});
+						document.getElementById("graphFrame").src = iframeUrl;
+					}
+				});
 
-            // Handle messages from the extension
-            window.addEventListener('message', event => {
-                const message = event.data;
-                switch (message.command) {
-                    case 'setContent':
-                        document.getElementById('graphFrame').src = message.url;
-                        break;
-                    case 'showLoading':
-                        document.getElementById('loadingOverlay').style.display = 'flex';
-                        break;
-                    case 'hideLoading':
-                        document.getElementById('loadingOverlay').style.display = 'none';
-                        break;
-                    case 'showPrompt':
-                        console.log('[InfraNodus] webview showPrompt received', {
-                            action: message.action,
-                            promptLength: message.prompt ? message.prompt.length : 0,
-                            canFindInFiles: message.canFindInFiles
-                        });
-                        showPromptPanel({
-                            label: message.label,
-                            action: message.action,
-                            prompt: message.prompt,
-                            canFindInFiles: message.canFindInFiles,
-                            adviceRequestId: message.adviceRequestId,
-                            isAdviceLoading: message.isAdviceLoading,
-                            modelToUse: message.modelToUse
-                        });
-                        break;
-                    case 'showGraphAiAdvice':
-                        showGraphAiAdvice({
-                            adviceRequestId: message.adviceRequestId,
-                            responses: message.responses
-                        });
-                        break;
-                    case 'showGraphAiAdviceError':
-                        showGraphAiAdviceError({
-                            adviceRequestId: message.adviceRequestId,
-                            error: message.error
-                        });
-                        break;
-                    case 'showAnalyzedContext':
-                        showContextPanel({
-                            contextText: message.contextText,
-                            chips: message.chips,
-                            scopeLabel: message.scopeLabel,
-                            emptyReason: message.emptyReason
-                        });
-                        break;
-                    case 'showExportPreview':
-                        showExportPreview({
-                            defaultName: message.defaultName,
-                            text: message.text
-                        });
-                        break;
-                    case 'exportPreviewUnavailable':
-                        if (exportPreviewPanel.classList.contains('visible')) {
-                            setExportPreviewSubmitting(false);
-                            setExportPreviewFeedback(message.reason || 'Nothing to export', true);
-                        }
-                        break;
-                    case 'exportToInfraNodusResult':
-                        setExportPreviewSubmitting(false);
-                        if (message.success) {
-                            setExportPreviewFeedback('Exported to InfraNodus', false);
-                            setTimeout(hideExportPreview, 900);
-                        } else {
-                            setExportPreviewFeedback(
-                                message.error
-                                    ? 'Export failed: ' + message.error
-                                    : 'Export failed',
-                                true
-                            );
-                        }
-                        break;
-                }
-            });
-        });
+				// Handle messages from the extension
+				window.addEventListener("message", (event) => {
+					const message = event.data;
+					switch (message.command) {
+						case "setContent":
+							document.getElementById("graphFrame").src = message.url;
+							break;
+						case "showLoading":
+							document.getElementById("loadingOverlay").style.display = "flex";
+							break;
+						case "hideLoading":
+							document.getElementById("loadingOverlay").style.display = "none";
+							break;
+						case "showPrompt":
+							console.log("[InfraNodus] webview showPrompt received", {
+								action: message.action,
+								promptLength: message.prompt ? message.prompt.length : 0,
+								canFindInFiles: message.canFindInFiles,
+							});
+							showPromptPanel({
+								label: message.label,
+								action: message.action,
+								prompt: message.prompt,
+								canFindInFiles: message.canFindInFiles,
+								adviceRequestId: message.adviceRequestId,
+								isAdviceLoading: message.isAdviceLoading,
+								modelToUse: message.modelToUse,
+							});
+							break;
+						case "showGraphAiAdvice":
+							showGraphAiAdvice({
+								adviceRequestId: message.adviceRequestId,
+								responses: message.responses,
+							});
+							break;
+						case "showGraphAiAdviceError":
+							showGraphAiAdviceError({
+								adviceRequestId: message.adviceRequestId,
+								error: message.error,
+							});
+							break;
+						case "showAnalyzedContext":
+							showContextPanel({
+								contextText: message.contextText,
+								chips: message.chips,
+								scopeLabel: message.scopeLabel,
+								emptyReason: message.emptyReason,
+							});
+							break;
+						case "showExportPreview":
+							showExportPreview({
+								defaultName: message.defaultName,
+								text: message.text,
+							});
+							break;
+						case "exportPreviewUnavailable":
+							if (exportPreviewPanel.classList.contains("visible")) {
+								setExportPreviewSubmitting(false);
+								setExportPreviewFeedback(
+									message.reason || "Nothing to export",
+									true,
+								);
+							}
+							break;
+						case "exportToInfraNodusResult":
+							setExportPreviewSubmitting(false);
+							if (message.success) {
+								setExportPreviewFeedback("Exported to InfraNodus", false);
+								setTimeout(hideExportPreview, 900);
+							} else {
+								setExportPreviewFeedback(
+									message.error
+										? "Export failed: " + message.error
+										: "Export failed",
+									true,
+								);
+							}
+							break;
+					}
+				});
+			});
 
-        // Restore iframe URL and graph data from vscode state on page load
-        const state = vscode.getState();
-        // console.log("Initial state:", state);
-        const storedIframeUrl = state?.infraNodusIframeUrl;
-        const storedGraphData = state?.graphData;
-        const storedTheme = state?.infraNodusTheme;
-        let hasRestoredData = false;  // Flag to prevent multiple restorations
+			// Restore iframe URL and graph data from vscode state on page load
+			const state = vscode.getState();
+			// console.log("Initial state:", state);
+			const storedIframeUrl = state?.infraNodusIframeUrl;
+			const storedGraphData = state?.graphData;
+			const storedTheme = state?.infraNodusTheme;
+			let hasRestoredData = false; // Flag to prevent multiple restorations
 
-        if (storedTheme) {
-            applyTheme(storedTheme);
-        }
+			if (storedTheme) {
+				applyTheme(storedTheme);
+			}
 
-        if (storedIframeUrl) {
-            // console.log("Setting iframe URL:", storedIframeUrl);
-            document.getElementById('graphFrame').src = storedIframeUrl;
-        }
+			if (storedIframeUrl) {
+				// console.log("Setting iframe URL:", storedIframeUrl);
+				document.getElementById("graphFrame").src = storedIframeUrl;
+			}
 
-        // Function to send graph data to iframe
-        function sendGraphDataToIframe() {
-            if (hasRestoredData || !storedGraphData) return;
-            
-            // console.log("Sending graph data to iframe:", storedGraphData);
-            const iframe = document.getElementById('graphFrame');
-            if (iframe && iframe.contentWindow) {
-                // Try both message types to see which one works
-                iframe.contentWindow.postMessage({
-                    type: 'LOAD_JSON',
-                    payload: storedGraphData
-                }, '*');
+			// Function to send graph data to iframe
+			function sendGraphDataToIframe() {
+				if (hasRestoredData || !storedGraphData) return;
 
-                vscode.postMessage({
-                    command: 'refreshGraphStats',
-                    type: 'REFRESH_GRAPH',
-                });
-                // console.log("Sent LOAD_JSON message to iframe");
+				// console.log("Sending graph data to iframe:", storedGraphData);
+				const iframe = document.getElementById("graphFrame");
+				if (iframe && iframe.contentWindow) {
+					// Try both message types to see which one works
+					iframe.contentWindow.postMessage(
+						{
+							type: "LOAD_JSON",
+							payload: storedGraphData,
+						},
+						"*",
+					);
 
-                // Also try UPDATE_GRAPH as backup
-                // TODO use if there's a problem with webview reload
-                // setTimeout(() => {
-                //     iframe.contentWindow.postMessage({
-                //         type: 'UPDATE_GRAPH',
-                //         payload: storedGraphData
-                //     }, '*');
-                //     console.log("Sent UPDATE_GRAPH message to iframe");
-                // }, 500);
-                
-                hasRestoredData = true;
-            }
-        }
+					vscode.postMessage({
+						command: "refreshGraphStats",
+						type: "REFRESH_GRAPH",
+					});
+					// console.log("Sent LOAD_JSON message to iframe");
 
-        window.addEventListener('message', event => {
-            const message = event.data;
-            
-            // Log all messages from iframe with their full content
-            // console.log('Webview received message:', {
-            //     type: message.type,
-            //     payload: message.payload,
-            //     fullMessage: message
-            // });
+					// Also try UPDATE_GRAPH as backup
+					// TODO use if there's a problem with webview reload
+					// setTimeout(() => {
+					//     iframe.contentWindow.postMessage({
+					//         type: 'UPDATE_GRAPH',
+					//         payload: storedGraphData
+					//     }, '*');
+					//     console.log("Sent UPDATE_GRAPH message to iframe");
+					// }, 500);
 
-            // Listen for READY message from iframe
-            if (message.type === 'READY') {
-                // console.log('Iframe is ready, sending stored data');
-                sendGraphDataToIframe();
-            }
+					hasRestoredData = true;
+				}
+			}
 
-            switch (message.type) {
-                case 'PROCESSING_START':
-                    // Update UI to show processing state
-                    document.getElementById('graphFrame').style.opacity = '0.5';
-                    break;
+			window.addEventListener("message", (event) => {
+				const message = event.data;
 
-                case 'PROCESSING_COMPLETE':
-                    // Restore UI
-                    document.getElementById('graphFrame').style.opacity = '1';
-                    break;
+				// Log all messages from iframe with their full content
+				// console.log('Webview received message:', {
+				//     type: message.type,
+				//     payload: message.payload,
+				//     fullMessage: message
+				// });
 
-                case 'PROCESSING_ERROR':
-                    // Handle error state
-                    document.getElementById('graphFrame').style.opacity = '1';
-                    console.error('Processing error:', message.error);
-                    break;
+				// Listen for READY message from iframe
+				if (message.type === "READY") {
+					// console.log('Iframe is ready, sending stored data');
+					sendGraphDataToIframe();
+				}
 
-                case 'LOAD_JSON':
-                    // Update the iframe with new data and persist it
-                    // console.log("LOAD_JSON EVENT received with payload:", message.payload)
-                    const iframe = document.getElementById('graphFrame');
-                    if (iframe && iframe.contentWindow) {
-                        // Store the data in vscode state
-                        const currentState = vscode.getState() || {};
-                        vscode.setState({ 
-                            ...currentState,
-                            graphData: message.payload 
-                        });
-                        // console.log("Updated state with new graph data:", message.payload);
-                        
-                        iframe.contentWindow.postMessage({
-                            type: 'LOAD_JSON',  // Changed to match the original type
-                            payload: message.payload
-                        }, '*');
-                        // console.log("Forwarded LOAD_JSON to iframe");
+				switch (message.type) {
+					case "PROCESSING_START":
+						// Update UI to show processing state
+						document.getElementById("graphFrame").style.opacity = "0.5";
+						break;
 
-                        vscode.postMessage({
-                            command: 'refreshGraphStats',
-                            type: 'REFRESH_GRAPH',
-                        });
-                    }
-                    break;
-            }
-        });
-    </script>
-</body>
+					case "PROCESSING_COMPLETE":
+						// Restore UI
+						document.getElementById("graphFrame").style.opacity = "1";
+						break;
+
+					case "PROCESSING_ERROR":
+						// Handle error state
+						document.getElementById("graphFrame").style.opacity = "1";
+						console.error("Processing error:", message.error);
+						break;
+
+					case "LOAD_JSON":
+						// Update the iframe with new data and persist it
+						// console.log("LOAD_JSON EVENT received with payload:", message.payload)
+						const iframe = document.getElementById("graphFrame");
+						if (iframe && iframe.contentWindow) {
+							// Store the data in vscode state
+							const currentState = vscode.getState() || {};
+							vscode.setState({
+								...currentState,
+								graphData: message.payload,
+							});
+							// console.log("Updated state with new graph data:", message.payload);
+
+							iframe.contentWindow.postMessage(
+								{
+									type: "LOAD_JSON", // Changed to match the original type
+									payload: message.payload,
+								},
+								"*",
+							);
+							// console.log("Forwarded LOAD_JSON to iframe");
+
+							vscode.postMessage({
+								command: "refreshGraphStats",
+								type: "REFRESH_GRAPH",
+							});
+						}
+						break;
+				}
+			});
+		</script>
+	</body>
 </html>
