@@ -1300,7 +1300,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						statementsToUse =
 							actionMessage == "summarize" ||
 							actionMessage == "graph summary" ||
-							actionMessage == "context"
+							actionMessage == "context" ||
+							actionMessage == "develop" ||
+							actionMessage == "question"
 								? this.getAllStatementsOfTopics({
 										statements,
 										selectedTopics: selectedClusters,
