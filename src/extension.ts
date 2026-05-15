@@ -139,31 +139,45 @@ export function activate(context: vscode.ExtensionContext) {
 		vscode.commands.registerCommand(
 			"infranodus-graph-view.setApiKey",
 			async () => {
+				const existingKey = (await provider.getApiKey()) ?? "";
+
 				const apiKey = await vscode.window.showInputBox({
-					prompt: "Enter your API Key",
+					prompt: existingKey
+						? "Update your InfraNodus API Key (leave empty to remove)"
+						: "Enter your InfraNodus API Key",
 					password: true,
-					placeHolder: "Enter your API key here...",
+					placeHolder: "Paste your InfraNodus API key here…",
+					value: existingKey,
+					ignoreFocusOut: true,
 				});
 
-				if (apiKey) {
-					let decodedToken: CustomJwtPayload = {};
-					let currentUser = "";
-					if (apiKey) {
-						try {
-							decodedToken = jwtDecode<CustomJwtPayload>(apiKey);
-							currentUser = decodedToken.user?.id || "";
-						} catch (error) {
-							console.error("Error decoding JWT:", error);
-							decodedToken = {};
-							currentUser = "";
-						}
-					}
-					await context.secrets.store("infranodus-api-key", apiKey);
+				// User pressed Escape — leave existing key untouched.
+				if (apiKey === undefined) return;
+
+				const trimmed = apiKey.trim();
+
+				if (!trimmed) {
+					await context.secrets.delete("infranodus-api-key");
 					await vscode.workspace
 						.getConfiguration("infranodus-graph-view")
-						.update("apiKey", apiKey, vscode.ConfigurationTarget.Global);
-					vscode.window.showInformationMessage("API key saved successfully!");
+						.update("apiKey", "", vscode.ConfigurationTarget.Global);
+					vscode.window.showInformationMessage(
+						"InfraNodus API key cleared. Using the free allowance.",
+					);
+					return;
 				}
+
+				try {
+					jwtDecode<CustomJwtPayload>(trimmed);
+				} catch (error) {
+					console.error("Error decoding JWT:", error);
+				}
+
+				await context.secrets.store("infranodus-api-key", trimmed);
+				await vscode.workspace
+					.getConfiguration("infranodus-graph-view")
+					.update("apiKey", trimmed, vscode.ConfigurationTarget.Global);
+				vscode.window.showInformationMessage("API key saved successfully!");
 			},
 		),
 		vscode.commands.registerCommand(
@@ -1418,9 +1432,19 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					}
 					return;
 				case "exportAnalyzedContextToInfraNodus":
+					if (!(await this.ensureCanExport())) {
+						return;
+					}
 					await this.exportAnalyzedContextToInfraNodus();
 					return;
 				case "requestAiAdviceExportPreview": {
+					if (!(await this.ensureCanExport())) {
+						this._view?.webview.postMessage({
+							command: "exportPreviewUnavailable",
+							reason: "An InfraNodus account is required to export.",
+						});
+						return;
+					}
 					const previewText = (message.text || "").toString();
 					const adviceKindRaw = (message.adviceKind || "advice").toString();
 					if (!previewText.trim()) {
@@ -1442,6 +1466,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					return;
 				}
 				case "requestExportPreview": {
+					if (!(await this.ensureCanExport())) {
+						this._view?.webview.postMessage({
+							command: "exportPreviewUnavailable",
+							reason: "An InfraNodus account is required to export.",
+						});
+						return;
+					}
 					const previewText = this._clipboardProvider.getCurrentContent() || "";
 					const defaultName = this.getDefaultExportGraphName();
 					if (!previewText) {
@@ -1463,6 +1494,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					return;
 				}
 				case "submitExportToInfraNodus": {
+					if (!(await this.ensureCanExport())) {
+						this._view?.webview.postMessage({
+							command: "exportToInfraNodusResult",
+							success: false,
+							error: "An InfraNodus account is required to export.",
+						});
+						return;
+					}
 					const submitName = (message.name || "").toString().trim();
 					const submitText = (message.text || "").toString();
 					if (!submitName) {
@@ -1701,18 +1740,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 		const apiKey = await this.getApiKey();
 		if (!apiKey) {
-			this._view?.webview.postMessage({
-				command: "showGraphAiAdviceError",
-				adviceRequestId,
-				error: "Please set your API key first.",
-			});
-			vscode.window.showErrorMessage("Please set your API key first");
-			return;
+			this.notifyNoApiKey();
 		}
 
-		const formattedApiKey = apiKey.startsWith("Bearer ")
-			? apiKey
-			: `Bearer ${apiKey}`;
+		const formattedApiKey = this.formatAuthHeader(apiKey);
 
 		try {
 			const response = await axios.post(
@@ -1803,10 +1834,80 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			.get<string>("apiKey")
 			?.trim();
 
-		return (
-			configuredApiKey ||
-			(await this._context.secrets.get("infranodus-api-key"))
+		if (configuredApiKey) return configuredApiKey;
+
+		const storedSecret = await this._context.secrets.get(
+			"infranodus-api-key",
 		);
+		if (!storedSecret) return undefined;
+
+		// The visible setting was explicitly cleared by the user but a stale
+		// key from an earlier session still lingers in secret storage. Drop
+		// it so subsequent requests use the free anonymous allowance instead
+		// of sending an invalid token that the server will reject.
+		await this._context.secrets.delete("infranodus-api-key");
+		return undefined;
+	}
+
+	private notifyNoApiKey() {
+		const openSettings = "Open Settings";
+		const getKey = "Get an API Key";
+		vscode.window
+			.showInformationMessage(
+				"InfraNodus is running without an API key — some features may be unavailable or rate-limited. Get a key at https://infranodus.com/api-access and add it in the extension's settings.",
+				getKey,
+				openSettings,
+			)
+			.then((choice) => {
+				if (choice === openSettings) {
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"infranodus-graph-view.apiKey",
+					);
+				} else if (choice === getKey) {
+					vscode.env.openExternal(
+						vscode.Uri.parse("https://infranodus.com/api-access"),
+					);
+				}
+			});
+	}
+
+	/**
+	 * Show an export-specific popup explaining that anonymous requests cannot
+	 * persist graphs. Returns true when the user has an API key configured
+	 * (export may proceed); false when there is no key (export was blocked
+	 * and the user has been notified).
+	 */
+	private async ensureCanExport(): Promise<boolean> {
+		const apiKey = await this.getApiKey();
+		if (apiKey) return true;
+
+		const signUp = "Sign Up";
+		const openSettings = "Open Settings";
+		vscode.window
+			.showInformationMessage(
+				"Exporting to InfraNodus requires a free account. Anonymous requests run the analysis but cannot save graphs. Sign up for a free account at https://infranodus.com to export and save data to graphs.",
+				signUp,
+				openSettings,
+			)
+			.then((choice) => {
+				if (choice === signUp) {
+					vscode.env.openExternal(
+						vscode.Uri.parse("https://infranodus.com/api-access"),
+					);
+				} else if (choice === openSettings) {
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"infranodus-graph-view.apiKey",
+					);
+				}
+			});
+		return false;
+	}
+
+	private formatAuthHeader(apiKey: string | undefined): string {
+		if (!apiKey) return "Bearer ";
+		return apiKey.startsWith("Bearer ") ? apiKey : `Bearer ${apiKey}`;
 	}
 
 	public getDefaultExportGraphName(): string {
@@ -1838,16 +1939,19 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		name: string;
 		text: string;
 	}): Promise<{ success: boolean; error?: string }> {
-		const apiKey = await this.getApiKey();
-		if (!apiKey) {
-			const errorMessage = "Please set your API key first";
-			vscode.window.showErrorMessage(errorMessage);
-			return { success: false, error: errorMessage };
+		// Anonymous requests cannot persist graphs server-side (the InfraNodus
+		// API forces doNotSave=true for the demo apiToken). Block here and
+		// show the dedicated sign-up prompt instead of making a request that
+		// would silently succeed but save nothing.
+		if (!(await this.ensureCanExport())) {
+			return {
+				success: false,
+				error: "An InfraNodus account is required to export.",
+			};
 		}
 
-		const formattedApiKey = apiKey.startsWith("Bearer ")
-			? apiKey
-			: `Bearer ${apiKey}`;
+		const apiKey = await this.getApiKey();
+		const formattedApiKey = this.formatAuthHeader(apiKey);
 
 		const textRequest = {
 			name,
@@ -1903,6 +2007,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public async exportAnalyzedContextToInfraNodus() {
+		if (!(await this.ensureCanExport())) {
+			return;
+		}
+
 		const text = this._clipboardProvider.getCurrentContent();
 		if (!text) {
 			vscode.window.showInformationMessage(
@@ -2105,20 +2213,15 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 			const apiKey = await this.getApiKey();
 			if (!apiKey) {
-				vscode.window.showErrorMessage("Please set your API key first");
-				return;
+				this.notifyNoApiKey();
 			}
 
 			const textRequest = this._buildRequestBody(
 				documentToProcess.fileName.split("/").pop() || "untitled",
 				textToProcess,
 			);
-			// console.log('InfraNodus API Request:', textRequest);
 
-			// Try with Bearer token format
-			const formattedApiKey = apiKey.startsWith("Bearer ")
-				? apiKey
-				: `Bearer ${apiKey}`;
+			const formattedApiKey = this.formatAuthHeader(apiKey);
 
 			const response = await axios.post(
 				`${this.getServerUrl()}/api/v1/graphAndStatements?donotsave=true&addStats=true&dotGraph=true&optimize=develop`,
@@ -2330,15 +2433,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 			const apiKey = await this.getApiKey();
 			if (!apiKey) {
-				vscode.window.showErrorMessage("Please set your API key first");
-				return;
+				this.notifyNoApiKey();
 			}
 
 			const textRequest = this._buildRequestBody(name, content);
 
-			const formattedApiKey = apiKey.startsWith("Bearer ")
-				? apiKey
-				: `Bearer ${apiKey}`;
+			const formattedApiKey = this.formatAuthHeader(apiKey);
 
 			// Notify webview that processing is starting
 			this._view.webview.postMessage({ type: "PROCESSING_START" });
