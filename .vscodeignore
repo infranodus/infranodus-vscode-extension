@@ -1,7 +1,11 @@
 .vscode/**
 .git/**
+.github/**
 .gitignore
+.gitattributes
 .DS_Store
+.env
+.env.*
 src/**/*.ts
 out/**/*.map
 node_modules/**
@@ -9,3 +13,7 @@ resources/*.gif
 resources/infranodus-extension.png
 *.vsix
 tsconfig.json
+docs/**
+testing-briefs/**
+CHANGELOG.md.bak
+*.log
