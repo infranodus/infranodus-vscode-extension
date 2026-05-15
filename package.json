@@ -154,18 +154,20 @@
 				},
 				"infranodus-graph-view.contentToSend": {
 					"type": "string",
-					"default": "PARSED_TEXT_ONLY",
+					"default": "AUTO",
 					"enum": [
+						"AUTO",
 						"PARSED_TEXT_ONLY",
 						"PARSED_CODE",
 						"FULL_FILE_CONTENTS"
 					],
 					"enumItemLabels": [
+						"Auto (text for prose files, code-architecture graph for code files)",
 						"Parsed Text Only (comments, plain text, [[wikilinks]])",
 						"Parsed Code (architecture reference graph: functions, classes, variables)",
 						"Full File Contents"
 					],
-					"description": "What content to send for analysis: parsed text extracts comments, plain text, and [[wikilinks]]; parsed code builds an architecture graph of functions/classes/variables and their references (click a node to jump to its definition); full file contents sends everything."
+					"description": "What content to send for analysis. Auto picks per file: text extraction for prose (.md, .txt, …) and a code-architecture graph for code (.ts, .py, …). Parsed text extracts comments, plain text, and [[wikilinks]]. Parsed code builds an architecture graph of functions/classes/variables and their references (click a node to jump to its definition). Full file contents sends everything."
 				}
 			}
 		},

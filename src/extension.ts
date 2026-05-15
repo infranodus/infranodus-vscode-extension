@@ -454,7 +454,11 @@ function flattenSymbolTree(
 	symbols: vscode.DocumentSymbol[],
 	uri: vscode.Uri,
 	parent: vscode.DocumentSymbol | undefined,
-	out: Array<{ symbol: vscode.DocumentSymbol; uri: vscode.Uri; parent?: vscode.DocumentSymbol }>,
+	out: Array<{
+		symbol: vscode.DocumentSymbol;
+		uri: vscode.Uri;
+		parent?: vscode.DocumentSymbol;
+	}>,
 ) {
 	for (const sym of symbols) {
 		out.push({ symbol: sym, uri, parent });
@@ -508,7 +512,11 @@ class CodeGraphBuilder {
 	}
 
 	private _findEnclosingSymbol(
-		flat: Array<{ symbol: vscode.DocumentSymbol; uri: vscode.Uri; parent?: vscode.DocumentSymbol }>,
+		flat: Array<{
+			symbol: vscode.DocumentSymbol;
+			uri: vscode.Uri;
+			parent?: vscode.DocumentSymbol;
+		}>,
 		uri: vscode.Uri,
 		position: vscode.Position,
 	): vscode.DocumentSymbol | undefined {
@@ -576,12 +584,17 @@ class CodeGraphBuilder {
 		return candidate;
 	}
 
-	private async _collectFileSymbols(
-		uri: vscode.Uri,
-	): Promise<{
-		symbols: vscode.DocumentSymbol[];
-		flat: Array<{ symbol: vscode.DocumentSymbol; uri: vscode.Uri; parent?: vscode.DocumentSymbol }>;
-	} | undefined> {
+	private async _collectFileSymbols(uri: vscode.Uri): Promise<
+		| {
+				symbols: vscode.DocumentSymbol[];
+				flat: Array<{
+					symbol: vscode.DocumentSymbol;
+					uri: vscode.Uri;
+					parent?: vscode.DocumentSymbol;
+				}>;
+		  }
+		| undefined
+	> {
 		const rawSymbols = await this._getDocumentSymbolsWithRetry(uri);
 		if (!rawSymbols || rawSymbols.length === 0) {
 			return undefined;
@@ -817,7 +830,9 @@ class CodeGraphBuilder {
 		return { edges: Array.from(edgeSet), symbolTable: table, warnings };
 	}
 
-	private async _collectFolderFiles(folderUri: vscode.Uri): Promise<vscode.Uri[]> {
+	private async _collectFolderFiles(
+		folderUri: vscode.Uri,
+	): Promise<vscode.Uri[]> {
 		const out: vscode.Uri[] = [];
 		const walk = async (dir: vscode.Uri, depth: number): Promise<void> => {
 			if (depth > 5) return;
@@ -1013,10 +1028,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								? message.payload.nodes
 								: [];
 
-					if (
-						navPayloadType === "click" ||
-						navPayloadType === "search"
-					) {
+					if (navPayloadType === "click" || navPayloadType === "search") {
 						const tokens = (navPayloadNodes as unknown[])
 							.map((raw) => {
 								const node = String(raw ?? "");
@@ -1059,7 +1071,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 									);
 									console.log(
 										`[InfraNodus] ${navPayloadType} → navigate to symbol`,
-										{ canonicalName: symbol.canonicalName, uri: symbol.uri.toString() },
+										{
+											canonicalName: symbol.canonicalName,
+											uri: symbol.uri.toString(),
+										},
 									);
 									break;
 								} catch (err) {
@@ -1082,10 +1097,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 						this._lastSearchPattern = searchPattern;
 						this._lastFilesToInclude = filesToInclude;
-						console.log(
-							`[InfraNodus] ${navPayloadType} → find-in-files`,
-							{ searchPattern, filesToInclude, tokens },
-						);
+						console.log(`[InfraNodus] ${navPayloadType} → find-in-files`, {
+							searchPattern,
+							filesToInclude,
+							tokens,
+						});
 						await this.executeFileSearch({
 							searchPattern,
 							filesToInclude,
@@ -1211,8 +1227,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							contextText = filtered.join("\n\n");
 							scopeLabel = `Concepts: ${selectedWords.join(", ")}`;
 							if (!contextText) {
-								emptyReason =
-									"No statements reference the selected concepts.";
+								emptyReason = "No statements reference the selected concepts.";
 							}
 						} else if (selectedClusters.length > 0) {
 							const topicLabels = selectedClusters.map(
@@ -1237,8 +1252,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								contextText = all.join("\n\n");
 								scopeLabel = `Topics: ${topicLabels.join(", ")}`;
 								if (!contextText) {
-									emptyReason =
-										"No statements found in the selected topics.";
+									emptyReason = "No statements found in the selected topics.";
 								}
 							}
 						}
@@ -1405,8 +1419,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					await this.exportAnalyzedContextToInfraNodus();
 					return;
 				case "requestExportPreview": {
-					const previewText =
-						this._clipboardProvider.getCurrentContent() || "";
+					const previewText = this._clipboardProvider.getCurrentContent() || "";
 					const defaultName = this.getDefaultExportGraphName();
 					if (!previewText) {
 						this._view?.webview.postMessage({
@@ -1586,7 +1599,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "promptQuestion",
 			develop: "promptIdea",
 			summarize: "promptSummary",
-			"graph summary":"promptSummary",
+			"graph summary": "promptSummary",
 			chat: "promptChat",
 			context: "promptContext",
 			context_gap: "promptContextGap",
@@ -1610,7 +1623,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
-			"graph summary":"Graph Summary",
+			"graph summary": "Graph Summary",
 			chat: "Chat",
 			context: "Context",
 			context_gap: "Context Gap",
@@ -1625,7 +1638,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "question",
 			develop: "develop",
 			summarize: "summary",
-			"graph summary":"graph summary",
+			"graph summary": "graph summary",
 		};
 		return requestModeMap[action];
 	}
@@ -1874,13 +1887,107 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		await this.exportTextToInfraNodus({ name: graphName, text });
 	}
 
-	private _isCodeMode(): boolean {
-		return this.getContentToSend() === "PARSED_CODE";
+	private _getFileExtension(fileName?: string): string {
+		if (!fileName) return "";
+		const last = fileName.split(/[\\/]/).pop() || fileName;
+		const dot = last.lastIndexOf(".");
+		if (dot < 0) return "";
+		return last.slice(dot + 1).toLowerCase();
 	}
 
-	private _resetCodeGraphState() {
+	private static readonly _TEXT_EXTENSIONS = new Set([
+		"md",
+		"mdc",
+		"txt",
+		"rst",
+		"adoc",
+		"org",
+		"wiki",
+		"log",
+		"markdown",
+		"text",
+	]);
+
+	private static readonly _CODE_EXTENSIONS = new Set([
+		"ts",
+		"tsx",
+		"js",
+		"jsx",
+		"mjs",
+		"cjs",
+		"py",
+		"java",
+		"c",
+		"cpp",
+		"cc",
+		"h",
+		"hpp",
+		"cs",
+		"go",
+		"rs",
+		"swift",
+		"kt",
+		"scala",
+		"rb",
+		"php",
+		"lua",
+		"fs",
+		"m",
+		"mm",
+		"vb",
+		"r",
+		"dart",
+		"groovy",
+		"clj",
+		"pl",
+		"pm",
+		"sh",
+		"bash",
+		"zsh",
+	]);
+
+	/**
+	 * Resolve the effective content-mode for this invocation.
+	 * AUTO inspects the file extension; explicit modes pass through.
+	 * `fileName` is omitted in folder scope — AUTO defaults to code there
+	 * since the builder gracefully falls back if no symbols are found.
+	 */
+	private _resolveContentMode(
+		fileName?: string,
+	): "PARSED_TEXT_ONLY" | "PARSED_CODE" | "FULL_FILE_CONTENTS" {
+		const raw = this.getContentToSend();
+		if (raw !== "AUTO") {
+			if (
+				raw === "PARSED_TEXT_ONLY" ||
+				raw === "PARSED_CODE" ||
+				raw === "FULL_FILE_CONTENTS"
+			) {
+				return raw;
+			}
+			return "PARSED_TEXT_ONLY";
+		}
+		const ext = this._getFileExtension(fileName);
+		if (!ext) {
+			// Folder scope or extensionless file: try code; builder falls back if empty.
+			return "PARSED_CODE";
+		}
+		if (InfraNodusViewProvider._TEXT_EXTENSIONS.has(ext)) {
+			return "PARSED_TEXT_ONLY";
+		}
+		if (InfraNodusViewProvider._CODE_EXTENSIONS.has(ext)) {
+			return "PARSED_CODE";
+		}
+		// Unknown extension: default to text (safer for non-code data files).
+		return "PARSED_TEXT_ONLY";
+	}
+
+	private _isCodeMode(fileName?: string): boolean {
+		return this._resolveContentMode(fileName) === "PARSED_CODE";
+	}
+
+	private _resetCodeGraphState(fileName?: string) {
 		this._symbolTable = new Map();
-		this._currentMode = this._isCodeMode() ? "code" : "text";
+		this._currentMode = this._isCodeMode(fileName) ? "code" : "text";
 	}
 
 	private _buildRequestBody(name: string, text: string) {
@@ -1916,10 +2023,6 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			// Show loading overlay
 			this._view?.webview.postMessage({ command: "showLoading" });
 
-			// Reset mode/symbol-table at top so in-flight clicks always match
-			// the graph the user is currently looking at.
-			this._resetCodeGraphState();
-
 			const documentToProcess =
 				document || vscode.window.activeTextEditor?.document;
 			if (!documentToProcess) {
@@ -1927,13 +2030,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 
+			// Reset mode/symbol-table at top so in-flight clicks always match
+			// the graph the user is currently looking at. AUTO resolves based on
+			// the document's file extension here.
+			this._resetCodeGraphState(documentToProcess.fileName);
+
 			const text = documentToProcess.getText();
 
 			let textToProcess: string;
 			if (this._currentMode === "code") {
-				const build = await this._codeGraphBuilder.buildForDocument(
-					documentToProcess,
-				);
+				const build =
+					await this._codeGraphBuilder.buildForDocument(documentToProcess);
 				if (!build || build.edges.length === 0) {
 					vscode.window.showWarningMessage(
 						"InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing.",
@@ -2499,7 +2606,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public _processTextForAnalysis(text: string, fileName: string): string {
-		if (this.getContentToSend() === "PARSED_TEXT_ONLY") {
+		const effective = this._resolveContentMode(fileName);
+		// PARSED_CODE never reaches this method via the main paths — processDocument /
+		// processFolderContent dispatch to the code-graph builder. If something does
+		// land here in PARSED_CODE mode (e.g. the diff path, which explicitly opts
+		// out of code mode), fall back to text extraction.
+		if (effective === "PARSED_TEXT_ONLY" || effective === "PARSED_CODE") {
 			return this._extractParsedText(text, fileName);
 		}
 		return this._compressCodeBlocks(text);
@@ -2517,34 +2629,53 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		// CSS class lists: all lowercase alphanumeric + hyphens/underscores/spaces, with hyphens
 		if (/^[a-z0-9_\-\s]+$/.test(s) && /-/.test(s) && /\s/.test(s)) return true;
 		// CSS color/function values: rgb(...), rgba(...), hsl(...), var(...), calc(...)
-		if (/^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient)\s*\(/i.test(s)) return true;
+		if (
+			/^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient)\s*\(/i.test(
+				s,
+			)
+		)
+			return true;
 		// Media queries / CSS sizes: contains px/em/rem/vh/vw with parens or commas, no sentence punctuation
 		if (/\b\d+(px|em|rem|vh|vw|%)\b/.test(s) && !/[.!?]/.test(s)) return true;
 		return false;
 	}
 
 	public _stripJsScaffolding(input: string): string {
-		return input
-			// import statements
-			.replace(/^\s*import\s+[\s\S]+?;?\s*$/gm, "")
-			// require declarations
-			.replace(/^\s*(const|let|var)\s+[\w{},\s]+\s*=\s*require\([^)]+\)\s*;?\s*$/gm, "")
-			// simple const string/number assignments (likely URLs, constants)
-			.replace(/^\s*(const|let|var)\s+\w+\s*=\s*['"`][^'"`]*['"`]\s*;?\s*$/gm, "")
-			// function declarations
-			.replace(/^\s*(export\s+default\s+)?(async\s+)?function\s+\w+\s*\([^)]*\)\s*\{?\s*$/gm, "")
-			// arrow function declarations
-			.replace(/^\s*(export\s+(default\s+)?)?(const|let|var)\s+\w+\s*=\s*(\([^)]*\)|\w+)\s*=>\s*\(?\s*$/gm, "")
-			// return statements opening
-			.replace(/^\s*return\s*\(?\s*$/gm, "")
-			// closing scaffolding: ); } });
-			.replace(/^\s*\)\s*;?\s*\}?\s*\)?\s*;?\s*$/gm, "")
-			.replace(/^\s*\}\s*\)?\s*;?\s*$/gm, "")
-			// module.exports
-			.replace(/^\s*module\.exports\s*=\s*[\w,\s{}]+\s*;?\s*$/gm, "")
-			.replace(/^\s*export\s+(default\s+)?[\w,\s{}]+\s*;?\s*$/gm, "")
-			// JSX block comments {/* ... */}
-			.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+		return (
+			input
+				// import statements
+				.replace(/^\s*import\s+[\s\S]+?;?\s*$/gm, "")
+				// require declarations
+				.replace(
+					/^\s*(const|let|var)\s+[\w{},\s]+\s*=\s*require\([^)]+\)\s*;?\s*$/gm,
+					"",
+				)
+				// simple const string/number assignments (likely URLs, constants)
+				.replace(
+					/^\s*(const|let|var)\s+\w+\s*=\s*['"`][^'"`]*['"`]\s*;?\s*$/gm,
+					"",
+				)
+				// function declarations
+				.replace(
+					/^\s*(export\s+default\s+)?(async\s+)?function\s+\w+\s*\([^)]*\)\s*\{?\s*$/gm,
+					"",
+				)
+				// arrow function declarations
+				.replace(
+					/^\s*(export\s+(default\s+)?)?(const|let|var)\s+\w+\s*=\s*(\([^)]*\)|\w+)\s*=>\s*\(?\s*$/gm,
+					"",
+				)
+				// return statements opening
+				.replace(/^\s*return\s*\(?\s*$/gm, "")
+				// closing scaffolding: ); } });
+				.replace(/^\s*\)\s*;?\s*\}?\s*\)?\s*;?\s*$/gm, "")
+				.replace(/^\s*\}\s*\)?\s*;?\s*$/gm, "")
+				// module.exports
+				.replace(/^\s*module\.exports\s*=\s*[\w,\s{}]+\s*;?\s*$/gm, "")
+				.replace(/^\s*export\s+(default\s+)?[\w,\s{}]+\s*;?\s*$/gm, "")
+				// JSX block comments {/* ... */}
+				.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+		);
 	}
 
 	public _extractParsedText(text: string, fileName: string): string {
@@ -2608,7 +2739,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		// HTML-like files: extract visible text content
-		if (["html", "htm", "xml", "svg", "vue", "svelte", "jsx", "tsx"].includes(ext)) {
+		if (
+			["html", "htm", "xml", "svg", "vue", "svelte", "jsx", "tsx"].includes(ext)
+		) {
 			let cleaned = text
 				.replace(/<script[\s\S]*?<\/script>/gi, "")
 				.replace(/<style[\s\S]*?<\/style>/gi, "");
@@ -2725,7 +2858,7 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
-			"graph summary":"Graph Summary",
+			"graph summary": "Graph Summary",
 			context: "Context",
 			context_gap: "Context Gap",
 		};
