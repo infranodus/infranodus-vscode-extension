@@ -157,13 +157,15 @@
 					"default": "PARSED_TEXT_ONLY",
 					"enum": [
 						"PARSED_TEXT_ONLY",
+						"PARSED_CODE",
 						"FULL_FILE_CONTENTS"
 					],
 					"enumItemLabels": [
 						"Parsed Text Only (comments, plain text, [[wikilinks]])",
+						"Parsed Code (architecture reference graph: functions, classes, variables)",
 						"Full File Contents"
 					],
-					"description": "What content to send for analysis: parsed text extracts only comments, plain text, and [[wikilinks]] from code files; full file contents sends everything"
+					"description": "What content to send for analysis: parsed text extracts comments, plain text, and [[wikilinks]]; parsed code builds an architecture graph of functions/classes/variables and their references (click a node to jump to its definition); full file contents sends everything."
 				}
 			}
 		},
