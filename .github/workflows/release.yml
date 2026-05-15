@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      HAS_VSCE_PAT: ${{ secrets.VSCE_PAT != '' }}
+      HAS_OVSX_PAT: ${{ secrets.OVSX_PAT != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "VERSION=$PKG_VERSION" >> "$GITHUB_ENV"
+          echo "VSIX_NAME=infranodus-graph-view-$PKG_VERSION.vsix" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile
+        run: npm run compile
+
+      - name: Package extension
+        run: npx --yes @vscode/vsce package --out "$VSIX_NAME"
+
+      - name: Extract changelog notes for this version
+        run: |
+          awk -v ver="$VERSION" '
+            $0 ~ "^## "ver"([^0-9]|$)" { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "See [CHANGELOG.md](./CHANGELOG.md) for details." > release_notes.md
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ env.VERSION }}
+          body_path: release_notes.md
+          files: ${{ env.VSIX_NAME }}
+          draft: false
+          prerelease: false
+
+      - name: Publish to VS Code Marketplace
+        if: env.HAS_VSCE_PAT == 'true'
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: npx --yes @vscode/vsce publish --packagePath "$VSIX_NAME"
+
+      - name: Publish to Open VSX Registry
+        if: env.HAS_OVSX_PAT == 'true'
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --yes ovsx publish "$VSIX_NAME" --pat "$OVSX_PAT"
