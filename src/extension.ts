@@ -54,6 +54,63 @@ function getResponseErrorMessage(data: unknown): string | undefined {
 	}
 }
 
+/**
+ * Detect HTTP / response errors that indicate the user's API key is invalid,
+ * missing, or rate-limit / quota related — i.e. anything the user can fix by
+ * setting or refreshing their key. Used to swap a generic red error popup
+ * for the helpful "Get an API Key / Open Settings" prompt.
+ */
+function isInfraNodusAuthError(error: unknown): boolean {
+	const AUTH_PHRASES = [
+		"log in",
+		"log-in",
+		"login",
+		"unauthorized",
+		"unauthenticated",
+		"invalid token",
+		"invalid api key",
+		"invalid api-token",
+		"invalid authorization",
+		"please add your",
+		"please, add your",
+		"api key",
+		"api token",
+		"api-token",
+		"jwt",
+		"quota",
+		"rate limit",
+		"rate-limit",
+		"call limit",
+		"allowance",
+		"check your api key",
+	];
+	const hasAuthPhrase = (s: string) => {
+		const lower = s.toLowerCase();
+		return AUTH_PHRASES.some((phrase) => lower.includes(phrase));
+	};
+
+	if (axios.isAxiosError(error)) {
+		const status = error.response?.status;
+		if (status === 401 || status === 403) return true;
+
+		const responseMessage = getResponseErrorMessage(error.response?.data);
+		if (responseMessage && hasAuthPhrase(responseMessage)) return true;
+
+		const statusText = error.response?.statusText;
+		if (statusText && hasAuthPhrase(statusText)) return true;
+	}
+
+	if (error instanceof Error) {
+		return hasAuthPhrase(error.message);
+	}
+
+	if (typeof error === "string") {
+		return hasAuthPhrase(error);
+	}
+
+	return false;
+}
+
 function getInfraNodusRequestErrorMessage(error: unknown): string {
 	if (!axios.isAxiosError(error)) {
 		if (error instanceof Error) {
@@ -1798,9 +1855,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				adviceRequestId,
 				error: message,
 			});
-			vscode.window.showWarningMessage(
-				`Could not generate InfraNodus AI advice: ${message}`,
-			);
+			if (isInfraNodusAuthError(error)) {
+				this.notifyApiKeyNeeded();
+			} else {
+				vscode.window.showWarningMessage(
+					`Could not generate InfraNodus AI advice: ${message}`,
+				);
+			}
 		}
 	}
 
@@ -2053,9 +2114,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		} catch (error) {
 			const message = getInfraNodusRequestErrorMessage(error);
 			logInfraNodusRequestError(error);
-			vscode.window.showErrorMessage(
-				`Could not export context to InfraNodus: ${message}`,
-			);
+			if (isInfraNodusAuthError(error)) {
+				this.notifyApiKeyNeeded();
+			} else {
+				vscode.window.showErrorMessage(
+					`Could not export context to InfraNodus: ${message}`,
+				);
+			}
 			return { success: false, error: message };
 		} finally {
 			this._view?.webview.postMessage({ command: "hideLoading" });
@@ -2299,7 +2364,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					typeof response.data.error === "string"
 						? response.data.error
 						: JSON.stringify(response.data.error);
-				if (errorText.includes("log in")) {
+				if (isInfraNodusAuthError(errorText)) {
 					this.notifyApiKeyNeeded();
 					return;
 				}
@@ -2393,17 +2458,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				// vscode.window.showInformationMessage('Graph visualization complete');
 			}
 		} catch (error) {
-			if (axios.isAxiosError(error)) {
-				const message = getInfraNodusRequestErrorMessage(error);
-				logInfraNodusRequestError(error);
+			const message = getInfraNodusRequestErrorMessage(error);
+			logInfraNodusRequestError(error);
+			if (isInfraNodusAuthError(error)) {
+				this.notifyApiKeyNeeded();
+			} else {
 				vscode.window.showErrorMessage(
 					`Error processing the document: ${message}`,
-				);
-			} else {
-				const message = getInfraNodusRequestErrorMessage(error);
-				logInfraNodusRequestError(error);
-				vscode.window.showErrorMessage(
-					"Error processing the document: " + message,
 				);
 			}
 		} finally {
@@ -2517,7 +2578,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					typeof response.data.error === "string"
 						? response.data.error
 						: JSON.stringify(response.data.error);
-				if (errorText.includes("log in")) {
+				if (isInfraNodusAuthError(errorText)) {
 					this.notifyApiKeyNeeded();
 					if (this._view) {
 						this._view.webview.postMessage({ type: "PROCESSING_COMPLETE" });
@@ -2614,7 +2675,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					error: message,
 				});
 			}
-			vscode.window.showErrorMessage("Error processing content: " + message);
+			if (isInfraNodusAuthError(error)) {
+				this.notifyApiKeyNeeded();
+			} else {
+				vscode.window.showErrorMessage(
+					"Error processing content: " + message,
+				);
+			}
 		} finally {
 			this._view?.webview.postMessage({ command: "hideLoading" });
 		}
