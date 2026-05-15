@@ -889,7 +889,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 	public getPartOfSpeechToProcess(): string {
 		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
-		return config.get("partOfSpeechToProcess") || "WORDS_IF_NO_HASHTAGS";
+		return config.get("partOfSpeechToProcess") || "HASHTAGS_AND_WORDS";
 	}
 
 	public getContentToSend(): string {

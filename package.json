@@ -2,7 +2,7 @@
 	"name": "infranodus-graph-view",
 	"displayName": "InfraNodus Graph View",
 	"description": "Knowledge graph for your text content, helps find connections and gaps, generate context-aware AI prompts.",
-	"version": "0.7.2",
+	"version": "0.8.0",
 	"author": "InfraNodus SAS",
 	"publisher": "infranodus",
 	"repository": {
@@ -46,131 +46,172 @@
 	],
 	"main": "./out/extension.js",
 	"contributes": {
-		"configuration": {
-			"title": "InfraNodus Graph View",
-			"properties": {
-				"infranodus-graph-view.apiUrl": {
-					"type": "string",
-					"default": "https://infranodus.com",
-					"description": "InfraNodus API URL (default: https://infranodus.com)"
-				},
-				"infranodus-graph-view.apiKey": {
-					"type": "string",
-					"default": "",
-					"description": "InfraNodus API key. If set, this value is used for all API requests. Note: this is stored in VS Code settings.json."
-				},
-				"infranodus-graph-view.graphUrl": {
-					"type": "string",
-					"default": "https://graph.infranodus.com",
-					"description": "InfraNodus Graph URL (default: https://graph.infranodus.com)"
-				},
-				"infranodus-graph-view.theme": {
-					"type": "string",
-					"default": "auto",
-					"enum": [
-						"auto",
-						"dark",
-						"light"
-					],
-					"enumItemLabels": [
-						"Auto (follow IDE theme)",
-						"Dark",
-						"Light"
-					],
-					"description": "Color theme for the InfraNodus graph view and extension UI. Auto follows the current VS Code color theme."
-				},
-				"infranodus-graph-view.graphPrefix": {
-					"type": "string",
-					"default": "Use the following knowledge graph data to make your response more precise",
-					"description": "On Copying Graph Structure: prefix text to add before the graph data when copying to clipboard"
-				},
-				"infranodus-graph-view.promptQuestion": {
-					"type": "string",
-					"default": "Generate a question that uses the current context and the graph structure below:",
-					"description": "On AI Question Click: prompt used when generating a question from the graph"
-				},
-				"infranodus-graph-view.promptIdea": {
-					"type": "string",
-					"default": "Generate an idea that uses the current context and the graph structure below:",
-					"description": "On AI Idea Click: prompt used when generating an idea from the graph"
-				},
-				"infranodus-graph-view.promptSummary": {
-					"type": "string",
-					"default": "Summarize the content using the current context and the graph structure below:",
-					"description": "On AI Summary Click: prompt used when summarizing content from the graph"
-				},
-				"infranodus-graph-view.promptContext": {
-					"type": "string",
-					"default": "Retrieve the most relevant content from the current context that relates to the graph structure below:",
-					"description": "On Context Click: prompt used when retrieving context from the graph"
-				},
-				"infranodus-graph-view.promptContextGap": {
-					"type": "string",
-					"default": "Find the gap in the current context that would bridge the graph structure below:",
-					"description": "On Bridge Context Gap Click: prompt used when finding gaps in the context"
-				},
-				"infranodus-graph-view.modelToUse": {
-					"type": "string",
-					"default": "gpt-5.4",
-					"enum": [
-						"gpt-4o-mini",
-						"gpt-4o",
-						"gpt-4",
-						"gpt-3.5-turbo",
-						"gpt-5.4",
-						"gpt-5.4-mini",
-						"claude-opus-4.6",
-						"claude-sonnet-4.6",
-						"grok-4.1-fast-non-reasoning",
-						"grok-4.1-fast-reasoning",
-						"gemini-2.5-flash",
-						"gemini-2.5-flash-lite"
-					],
-					"description": "AI model to use when generating InfraNodus graph advice. Available models are provided by /api/v1/aiModels."
-				},
-				"infranodus-graph-view.stopwords": {
-					"type": "array",
-					"default": [
-						"const",
-						"var",
-						"let"
-					],
-					"description": "List of stopwords to exclude from text processing"
-				},
-				"infranodus-graph-view.partOfSpeechToProcess": {
-					"type": "string",
-					"default": "WORDS_IF_NO_HASHTAGS",
-					"enum": [
-						"WORDS_IF_NO_HASHTAGS",
-						"HASHTAGS_AND_WORDS",
-						"HASHTAGS_ONLY"
-					],
-					"enumItemLabels": [
-						"Prioritize [[Wiki Links]] and #Hashtags",
-						"All: Words, [[Wiki Links]], #Hashtags",
-						"Only [[Wiki Links]] and #Hashtags"
-					],
-					"description": "How to process parts of speech in the text for graph generation"
-				},
-				"infranodus-graph-view.contentToSend": {
-					"type": "string",
-					"default": "AUTO",
-					"enum": [
-						"AUTO",
-						"PARSED_TEXT_ONLY",
-						"PARSED_CODE",
-						"FULL_FILE_CONTENTS"
-					],
-					"enumItemLabels": [
-						"Auto (text for prose files, code-architecture graph for code files)",
-						"Parsed Text Only (comments, plain text, [[wikilinks]])",
-						"Parsed Code (architecture reference graph: functions, classes, variables)",
-						"Full File Contents"
-					],
-					"description": "What content to send for analysis. Auto picks per file: text extraction for prose (.md, .txt, …) and a code-architecture graph for code (.ts, .py, …). Parsed text extracts comments, plain text, and [[wikilinks]]. Parsed code builds an architecture graph of functions/classes/variables and their references (click a node to jump to its definition). Full file contents sends everything."
+		"configuration": [
+			{
+				"title": "InfraNodus: API Connection",
+				"order": 1,
+				"properties": {
+					"infranodus-graph-view.apiKey": {
+						"type": "string",
+						"default": "",
+						"description": "InfraNodus API key. Get one from infranodus.com → Settings → API. Stored in VS Code settings.json — use Settings Sync carefully."
+					}
+				}
+			},
+			{
+				"title": "InfraNodus: Text & Code Analysis",
+				"order": 2,
+				"properties": {
+					"infranodus-graph-view.contentToSend": {
+						"type": "string",
+						"default": "AUTO",
+						"enum": [
+							"AUTO",
+							"PARSED_TEXT_ONLY",
+							"PARSED_CODE",
+							"FULL_FILE_CONTENTS"
+						],
+						"enumItemLabels": [
+							"Auto (text for prose files, code-architecture graph for code files)",
+							"Parsed Text Only (comments, plain text, [[wikilinks]])",
+							"Parsed Code (architecture reference graph: functions, classes, variables)",
+							"Full File Contents"
+						],
+						"enumDescriptions": [
+							"Picks per file based on extension. Prose files (.md, .txt, .rst, …) use Parsed Text. Code files (.ts, .py, .go, …) use Parsed Code. Unknown extensions fall back to Parsed Text.",
+							"Extract only prose-like content: comments, docstrings, plain text from HTML/Markdown, string literals that look like sentences, and [[wikilinks]]. Skips code scaffolding.",
+							"Build an architecture reference graph: nodes are functions, classes, methods, and exported variables; edges are containment and references. Clicking a node in the graph jumps the editor to that symbol's definition. Requires a language server for the file (TS/JS, Python, Go, etc.).",
+							"Send the entire file as-is, with simple block compression so code structures fit on single lines. Useful when you want every token analyzed."
+						],
+						"description": "What content to send for analysis. Auto picks per file: text extraction for prose (.md, .txt, …) and a code-architecture graph for code (.ts, .py, …). Parsed text extracts comments, plain text, and [[wikilinks]]. Parsed code builds an architecture graph of functions/classes/variables and their references (click a node to jump to its definition). Full file contents sends everything."
+					},
+					"infranodus-graph-view.partOfSpeechToProcess": {
+						"type": "string",
+						"default": "HASHTAGS_AND_WORDS",
+						"enum": [
+							"HASHTAGS_AND_WORDS",
+							"WORDS_IF_NO_HASHTAGS",
+							"HASHTAGS_ONLY"
+						],
+						"enumItemLabels": [
+							"All: Words, [[Wiki Links]], #Hashtags",
+							"Prioritize [[Wiki Links]] and #Hashtags",
+							"Only [[Wiki Links]] and #Hashtags"
+						],
+						"enumDescriptions": [
+							"All meaningful words become graph nodes alongside any [[wiki links]] and #hashtags. Most inclusive — best for free-form prose, comments, or text without explicit markup.",
+							"If the text contains [[wiki links]] or #hashtags, only those become nodes (the rest is treated as connective tissue). Otherwise falls back to all words. Useful for documents authored with intentional markup.",
+							"Only [[wiki links]] and #hashtags become nodes — everything else is ignored. Use for curated ontologies, manually-tagged notes, and tightly-scoped knowledge graphs."
+						],
+						"description": "Controls which tokens in the text become nodes in the knowledge graph. Note: this setting is overridden in Parsed Code mode, which always treats symbol names as atomic tokens regardless of this value."
+					},
+					"infranodus-graph-view.stopwords": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"default": [
+							"const",
+							"var",
+							"let"
+						],
+						"description": "Words to exclude from graph node generation. The defaults filter common code keywords so they don't dominate the graph when analyzing source files. Add domain-specific noise words (e.g. \"figure\", \"page\") to clean up analysis of papers or reports. Note: this setting is ignored in Parsed Code mode, which uses an empty stopword list."
+					},
+					"infranodus-graph-view.modelToUse": {
+						"type": "string",
+						"default": "gpt-5.4",
+						"enum": [
+							"gpt-4o-mini",
+							"gpt-4o",
+							"gpt-4",
+							"gpt-3.5-turbo",
+							"gpt-5.4",
+							"gpt-5.4-mini",
+							"claude-opus-4.6",
+							"claude-sonnet-4.6",
+							"grok-4.1-fast-non-reasoning",
+							"grok-4.1-fast-reasoning",
+							"gemini-2.5-flash",
+							"gemini-2.5-flash-lite"
+						],
+						"description": "AI model used both for AI-driven topic naming inside the knowledge graph and for the in-extension AI buttons (Question, Idea, Summary, Context, Bridge Gap). The list mirrors what's available via /api/v1/aiModels on your InfraNodus account."
+					}
+				}
+			},
+			{
+				"title": "InfraNodus: AI Assistant",
+				"order": 3,
+				"properties": {
+					"infranodus-graph-view.graphPrefix": {
+						"type": "string",
+						"default": "Use the following knowledge graph data to make your response more precise",
+						"description": "Prefix prepended to the graph data when you copy the graph structure to the clipboard for use in an external AI chat."
+					},
+					"infranodus-graph-view.promptQuestion": {
+						"type": "string",
+						"default": "Generate a question that uses the current context and the graph structure below:",
+						"description": "Prompt sent to the AI when you click the \"Question\" button — designed to surface a question grounded in the current graph."
+					},
+					"infranodus-graph-view.promptIdea": {
+						"type": "string",
+						"default": "Generate an idea that uses the current context and the graph structure below:",
+						"description": "Prompt sent to the AI when you click the \"Idea\" button — used to generate new ideas from the current graph."
+					},
+					"infranodus-graph-view.promptSummary": {
+						"type": "string",
+						"default": "Summarize the content using the current context and the graph structure below:",
+						"description": "Prompt sent to the AI when you click the \"Summary\" button — produces a summary of the analyzed content informed by the graph."
+					},
+					"infranodus-graph-view.promptContext": {
+						"type": "string",
+						"default": "Retrieve the most relevant content from the current context that relates to the graph structure below:",
+						"description": "Prompt sent to the AI when you click the \"Context\" button — pulls the most relevant passages from the analyzed content for a given graph selection."
+					},
+					"infranodus-graph-view.promptContextGap": {
+						"type": "string",
+						"default": "Find the gap in the current context that would bridge the graph structure below:",
+						"description": "Prompt sent to the AI when you click the \"Bridge Context Gap\" button — suggests what's missing between disconnected parts of the graph."
+					}
+				}
+			},
+			{
+				"title": "InfraNodus: Appearance",
+				"order": 4,
+				"properties": {
+					"infranodus-graph-view.theme": {
+						"type": "string",
+						"default": "auto",
+						"enum": [
+							"auto",
+							"dark",
+							"light"
+						],
+						"enumItemLabels": [
+							"Auto (follow IDE theme)",
+							"Dark",
+							"Light"
+						],
+						"description": "Color theme for the InfraNodus graph view and extension UI. Auto follows the current VS Code color theme."
+					}
+				}
+			},
+			{
+				"title": "InfraNodus: Advanced (Self-Hosting)",
+				"order": 5,
+				"properties": {
+					"infranodus-graph-view.apiUrl": {
+						"type": "string",
+						"default": "https://infranodus.com",
+						"description": "InfraNodus API URL (default: https://infranodus.com). Change only if you run a self-hosted InfraNodus instance."
+					},
+					"infranodus-graph-view.graphUrl": {
+						"type": "string",
+						"default": "https://graph.infranodus.com",
+						"description": "InfraNodus Graph rendering URL (default: https://graph.infranodus.com). Change only if you self-host the graph renderer."
+					}
 				}
 			}
-		},
+		],
 		"viewsContainers": {
 			"activitybar": [
 				{
