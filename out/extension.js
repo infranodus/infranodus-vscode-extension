@@ -25077,9 +25077,11 @@ ${graphContent}`;
       if (this._currentMode === "code") {
         const build = await this._codeGraphBuilder.buildForDocument(documentToProcess);
         if (!build || build.edges.length === 0) {
-          vscode.window.showWarningMessage(
-            "InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing."
-          );
+          if (this.getContentToSend() === "PARSED_CODE") {
+            vscode.window.showWarningMessage(
+              "InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing."
+            );
+          }
           this._currentMode = "text";
           textToProcess = this._processTextForAnalysis(
             text,
@@ -25197,9 +25199,11 @@ ${graphContent}`;
       if (this._currentMode === "code") {
         const build = await this._codeGraphBuilder.buildForFolder(folderUri);
         if (!build || build.edges.length === 0) {
-          vscode.window.showWarningMessage(
-            "InfraNodus: no code symbols found in this folder. Falling back to text mode for this run."
-          );
+          if (this.getContentToSend() === "PARSED_CODE") {
+            vscode.window.showWarningMessage(
+              "InfraNodus: no code symbols found in this folder. Falling back to text mode for this run."
+            );
+          }
           this._currentMode = "text";
         } else {
           this._symbolTable = build.symbolTable;

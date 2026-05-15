@@ -2042,9 +2042,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				const build =
 					await this._codeGraphBuilder.buildForDocument(documentToProcess);
 				if (!build || build.edges.length === 0) {
-					vscode.window.showWarningMessage(
-						"InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing.",
-					);
+					// Only warn the user when they explicitly asked for code mode.
+					// Under AUTO, fall back to text silently — that's the contract.
+					if (this.getContentToSend() === "PARSED_CODE") {
+						vscode.window.showWarningMessage(
+							"InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing.",
+						);
+					}
 					this._currentMode = "text";
 					textToProcess = this._processTextForAnalysis(
 						text,
@@ -2224,9 +2228,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			if (this._currentMode === "code") {
 				const build = await this._codeGraphBuilder.buildForFolder(folderUri);
 				if (!build || build.edges.length === 0) {
-					vscode.window.showWarningMessage(
-						"InfraNodus: no code symbols found in this folder. Falling back to text mode for this run.",
-					);
+					// Only warn the user when they explicitly asked for code mode.
+					// Under AUTO, fall back to text silently — that's the contract
+					// (e.g. a folder of only .md files shouldn't produce a warning).
+					if (this.getContentToSend() === "PARSED_CODE") {
+						vscode.window.showWarningMessage(
+							"InfraNodus: no code symbols found in this folder. Falling back to text mode for this run.",
+						);
+					}
 					this._currentMode = "text";
 					// fall through to existing text flow
 				} else {
