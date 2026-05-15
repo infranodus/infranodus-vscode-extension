@@ -70,6 +70,22 @@ _Note, some people use this extension with their code bases as well, but at the 
 13. You can add "stopwords" in the settings: the words and terms that the graph should not process. Useful for auxiliary terms and function names.
 14. By default, we process only plain text, however, you can choose to process the full file content also in the Extension settings
 
+## How to Position the Extension in the Right Sidebar
+
+By default, the extension is positioned on the left, next to the Explorer panel. You might want to move it to the right sidebar.
+
+In order to do that, press the key combination Cmd/Ctr + Shift + P to open the Command Palette.
+
+Then choose View: Move View
+
+Select the InfraNodus Graph
+
+Then pick Secondary Side Bar
+
+The extension will be moved to the secondary side bar on the right where the AI chats are positioned. This is usually a more convenient place for it.
+
+[Full video with a demo](https://cleanshot.com/share/ktcg0xyD)
+
 ## Recommended Tools
 
 - You will need an [InfraNodus](https://infranodus.com) account to use this extension
