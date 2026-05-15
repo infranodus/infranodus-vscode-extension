@@ -405,11 +405,476 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 }
 
+type CodeGraphMode = "text" | "code";
+
+interface CodeSymbolRecord {
+	canonicalName: string;
+	kind: vscode.SymbolKind;
+	uri: vscode.Uri;
+	range: vscode.Range;
+}
+
+type CodeSymbolTable = Map<string, CodeSymbolRecord>;
+
+interface CodeGraphBuildResult {
+	edges: string[];
+	symbolTable: CodeSymbolTable;
+	warnings: string[];
+}
+
+const CODE_GRAPH_INCLUDED_KINDS = new Set<vscode.SymbolKind>([
+	vscode.SymbolKind.Function,
+	vscode.SymbolKind.Method,
+	vscode.SymbolKind.Constructor,
+	vscode.SymbolKind.Class,
+	vscode.SymbolKind.Interface,
+	vscode.SymbolKind.Enum,
+	vscode.SymbolKind.Struct,
+	vscode.SymbolKind.Namespace,
+	vscode.SymbolKind.Module,
+	vscode.SymbolKind.Variable,
+	vscode.SymbolKind.Constant,
+	vscode.SymbolKind.Property,
+	vscode.SymbolKind.Field,
+]);
+
+const CODE_GRAPH_MAX_SYMBOLS = 500;
+const CODE_GRAPH_MAX_EDGES = 5000;
+const CODE_GRAPH_MAX_FOLDER_FILES = 200;
+
+function isCodeGraphSymbolName(name: string): boolean {
+	const trimmed = name.trim();
+	if (!trimmed) return false;
+	// Allow underscores, dots, dollar signs, alphanumerics
+	if (!/^[A-Za-z_$][A-Za-z0-9_$.]*$/.test(trimmed)) return false;
+	return true;
+}
+
+function flattenSymbolTree(
+	symbols: vscode.DocumentSymbol[],
+	uri: vscode.Uri,
+	parent: vscode.DocumentSymbol | undefined,
+	out: Array<{
+		symbol: vscode.DocumentSymbol;
+		uri: vscode.Uri;
+		parent?: vscode.DocumentSymbol;
+	}>,
+) {
+	for (const sym of symbols) {
+		out.push({ symbol: sym, uri, parent });
+		if (sym.children && sym.children.length > 0) {
+			flattenSymbolTree(sym.children, uri, sym, out);
+		}
+	}
+}
+
+class CodeGraphBuilder {
+	constructor(private readonly _log: (msg: string) => void) {}
+
+	private async _getDocumentSymbolsWithRetry(
+		uri: vscode.Uri,
+	): Promise<vscode.DocumentSymbol[] | undefined> {
+		const first = await vscode.commands.executeCommand<
+			vscode.DocumentSymbol[] | vscode.SymbolInformation[] | undefined
+		>("vscode.executeDocumentSymbolProvider", uri);
+		const firstNormalized = this._normalizeSymbols(first);
+		if (firstNormalized && firstNormalized.length > 0) {
+			return firstNormalized;
+		}
+		// Retry once after 500ms — handles LSP cold start (e.g. Pylance still indexing)
+		await new Promise((r) => setTimeout(r, 500));
+		const second = await vscode.commands.executeCommand<
+			vscode.DocumentSymbol[] | vscode.SymbolInformation[] | undefined
+		>("vscode.executeDocumentSymbolProvider", uri);
+		return this._normalizeSymbols(second);
+	}
+
+	private _normalizeSymbols(
+		raw: vscode.DocumentSymbol[] | vscode.SymbolInformation[] | undefined,
+	): vscode.DocumentSymbol[] | undefined {
+		if (!raw || raw.length === 0) return raw as undefined;
+		// SymbolInformation has `location`, DocumentSymbol has `range` + `children`
+		const first = raw[0] as any;
+		if (first && first.location && !first.range) {
+			// Flat SymbolInformation list — synthesize DocumentSymbols
+			return (raw as vscode.SymbolInformation[]).map((s) => {
+				const ds = new vscode.DocumentSymbol(
+					s.name,
+					"",
+					s.kind,
+					s.location.range,
+					s.location.range,
+				);
+				return ds;
+			});
+		}
+		return raw as vscode.DocumentSymbol[];
+	}
+
+	private _findEnclosingSymbol(
+		flat: Array<{
+			symbol: vscode.DocumentSymbol;
+			uri: vscode.Uri;
+			parent?: vscode.DocumentSymbol;
+		}>,
+		uri: vscode.Uri,
+		position: vscode.Position,
+	): vscode.DocumentSymbol | undefined {
+		let best: vscode.DocumentSymbol | undefined;
+		let bestSize = Number.POSITIVE_INFINITY;
+		for (const entry of flat) {
+			if (entry.uri.toString() !== uri.toString()) continue;
+			const r = entry.symbol.range;
+			if (!r.contains(position)) continue;
+			if (!CODE_GRAPH_INCLUDED_KINDS.has(entry.symbol.kind)) continue;
+			// Pick the smallest enclosing range
+			const size =
+				(r.end.line - r.start.line) * 10000 +
+				(r.end.character - r.start.character);
+			if (size < bestSize) {
+				bestSize = size;
+				best = entry.symbol;
+			}
+		}
+		return best;
+	}
+
+	private _registerSymbol(
+		table: CodeSymbolTable,
+		nameToCanonical: Map<vscode.DocumentSymbol, string>,
+		sym: vscode.DocumentSymbol,
+		uri: vscode.Uri,
+		parent: vscode.DocumentSymbol | undefined,
+		fileLabel: string,
+		warnings: string[],
+	): string | undefined {
+		if (!isCodeGraphSymbolName(sym.name)) return undefined;
+		const baseName = sym.name.trim();
+		let candidate = baseName;
+		const existing = table.get(candidate.toLowerCase());
+		if (existing) {
+			if (
+				existing.uri.toString() === uri.toString() &&
+				existing.range.isEqual(sym.selectionRange)
+			) {
+				// Same symbol already registered (can happen with overlapping providers)
+				nameToCanonical.set(sym, existing.canonicalName);
+				return existing.canonicalName;
+			}
+			// Collision: disambiguate by parent or file label
+			const parentLabel = parent
+				? parent.name.trim().replace(/[^A-Za-z0-9_$]/g, "")
+				: fileLabel.replace(/\.[^.]+$/, "").replace(/[^A-Za-z0-9_$]/g, "");
+			candidate = `${baseName}_${parentLabel || "ctx"}`;
+			let suffixN = 2;
+			while (table.has(candidate.toLowerCase())) {
+				candidate = `${baseName}_${parentLabel || "ctx"}${suffixN++}`;
+			}
+			warnings.push(
+				`Symbol name collision: "${baseName}" → renamed "${candidate}" (in ${fileLabel})`,
+			);
+		}
+		table.set(candidate.toLowerCase(), {
+			canonicalName: candidate,
+			kind: sym.kind,
+			uri,
+			range: sym.selectionRange,
+		});
+		nameToCanonical.set(sym, candidate);
+		return candidate;
+	}
+
+	private async _collectFileSymbols(uri: vscode.Uri): Promise<
+		| {
+				symbols: vscode.DocumentSymbol[];
+				flat: Array<{
+					symbol: vscode.DocumentSymbol;
+					uri: vscode.Uri;
+					parent?: vscode.DocumentSymbol;
+				}>;
+		  }
+		| undefined
+	> {
+		const rawSymbols = await this._getDocumentSymbolsWithRetry(uri);
+		if (!rawSymbols || rawSymbols.length === 0) {
+			return undefined;
+		}
+		const flat: Array<{
+			symbol: vscode.DocumentSymbol;
+			uri: vscode.Uri;
+			parent?: vscode.DocumentSymbol;
+		}> = [];
+		flattenSymbolTree(rawSymbols, uri, undefined, flat);
+		return { symbols: rawSymbols, flat };
+	}
+
+	private _fileLabel(uri: vscode.Uri): string {
+		const parts = uri.path.split("/");
+		return parts[parts.length - 1] || uri.path;
+	}
+
+	public async buildForDocument(
+		doc: vscode.TextDocument,
+	): Promise<CodeGraphBuildResult | undefined> {
+		const warnings: string[] = [];
+		const collected = await this._collectFileSymbols(doc.uri);
+		if (!collected) {
+			return undefined;
+		}
+		const { flat } = collected;
+		const table: CodeSymbolTable = new Map();
+		const nameToCanonical = new Map<vscode.DocumentSymbol, string>();
+		const fileLabel = this._fileLabel(doc.uri);
+
+		for (const entry of flat) {
+			if (table.size >= CODE_GRAPH_MAX_SYMBOLS) break;
+			if (!CODE_GRAPH_INCLUDED_KINDS.has(entry.symbol.kind)) continue;
+			this._registerSymbol(
+				table,
+				nameToCanonical,
+				entry.symbol,
+				entry.uri,
+				entry.parent,
+				fileLabel,
+				warnings,
+			);
+		}
+
+		const edgeSet = new Set<string>();
+		const addEdge = (a: string, b: string) => {
+			if (!a || !b || a === b) return;
+			if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) return;
+			edgeSet.add(`${a} ${b}`);
+		};
+
+		// Contains edges
+		for (const entry of flat) {
+			const childName = nameToCanonical.get(entry.symbol);
+			if (!childName) continue;
+			if (entry.parent) {
+				const parentName = nameToCanonical.get(entry.parent);
+				if (parentName) {
+					addEdge(parentName, childName);
+				}
+			}
+		}
+
+		// Reference edges
+		for (const entry of flat) {
+			const sym = entry.symbol;
+			const canonical = nameToCanonical.get(sym);
+			if (!canonical) continue;
+			if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) break;
+			let refs: vscode.Location[] | undefined;
+			try {
+				refs = await vscode.commands.executeCommand<vscode.Location[]>(
+					"vscode.executeReferenceProvider",
+					entry.uri,
+					sym.selectionRange.start,
+				);
+			} catch (err) {
+				continue;
+			}
+			if (!refs || refs.length === 0) continue;
+			for (const ref of refs) {
+				if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) break;
+				const enclosing = this._findEnclosingSymbol(
+					flat,
+					ref.uri,
+					ref.range.start,
+				);
+				if (!enclosing) continue;
+				if (enclosing === sym) continue; // skip self-reference at definition
+				const callerName = nameToCanonical.get(enclosing);
+				if (!callerName) continue;
+				addEdge(callerName, canonical);
+			}
+		}
+
+		if (edgeSet.size === 0 && table.size > 0) {
+			// No edges resolved but symbols exist — emit a single line per symbol
+			// so InfraNodus at least renders them as isolated nodes.
+			for (const rec of table.values()) {
+				addEdge(rec.canonicalName, fileLabel.replace(/[^A-Za-z0-9_$]/g, "_"));
+			}
+		}
+
+		if (warnings.length > 0) {
+			for (const w of warnings) this._log(w);
+		}
+
+		return {
+			edges: Array.from(edgeSet),
+			symbolTable: table,
+			warnings,
+		};
+	}
+
+	public async buildForFolder(
+		folderUri: vscode.Uri,
+	): Promise<CodeGraphBuildResult | undefined> {
+		const warnings: string[] = [];
+		const files = await this._collectFolderFiles(folderUri);
+		if (files.length === 0) return undefined;
+
+		const table: CodeSymbolTable = new Map();
+		const nameToCanonical = new Map<vscode.DocumentSymbol, string>();
+		const allFlat: Array<{
+			symbol: vscode.DocumentSymbol;
+			uri: vscode.Uri;
+			parent?: vscode.DocumentSymbol;
+		}> = [];
+
+		for (const uri of files) {
+			if (table.size >= CODE_GRAPH_MAX_SYMBOLS) {
+				warnings.push(
+					`Symbol cap reached (${CODE_GRAPH_MAX_SYMBOLS}). Truncating.`,
+				);
+				break;
+			}
+			const collected = await this._collectFileSymbols(uri);
+			if (!collected) continue;
+			const fileLabel = this._fileLabel(uri);
+			for (const entry of collected.flat) {
+				if (table.size >= CODE_GRAPH_MAX_SYMBOLS) break;
+				if (!CODE_GRAPH_INCLUDED_KINDS.has(entry.symbol.kind)) continue;
+				this._registerSymbol(
+					table,
+					nameToCanonical,
+					entry.symbol,
+					entry.uri,
+					entry.parent,
+					fileLabel,
+					warnings,
+				);
+				allFlat.push(entry);
+			}
+		}
+
+		const edgeSet = new Set<string>();
+		const addEdge = (a: string, b: string) => {
+			if (!a || !b || a === b) return;
+			if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) return;
+			edgeSet.add(`${a} ${b}`);
+		};
+
+		// Contains edges
+		for (const entry of allFlat) {
+			const childName = nameToCanonical.get(entry.symbol);
+			if (!childName) continue;
+			if (entry.parent) {
+				const parentName = nameToCanonical.get(entry.parent);
+				if (parentName) addEdge(parentName, childName);
+			}
+		}
+
+		// Reference edges (folder scope: filter cross-file refs by languageId)
+		const langIdCache = new Map<string, string>();
+		const getLangId = async (uri: vscode.Uri): Promise<string> => {
+			const key = uri.toString();
+			const cached = langIdCache.get(key);
+			if (cached !== undefined) return cached;
+			try {
+				const d = await vscode.workspace.openTextDocument(uri);
+				langIdCache.set(key, d.languageId);
+				return d.languageId;
+			} catch {
+				langIdCache.set(key, "");
+				return "";
+			}
+		};
+
+		for (const entry of allFlat) {
+			if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) break;
+			const sym = entry.symbol;
+			const canonical = nameToCanonical.get(sym);
+			if (!canonical) continue;
+			let refs: vscode.Location[] | undefined;
+			try {
+				refs = await vscode.commands.executeCommand<vscode.Location[]>(
+					"vscode.executeReferenceProvider",
+					entry.uri,
+					sym.selectionRange.start,
+				);
+			} catch {
+				continue;
+			}
+			if (!refs || refs.length === 0) continue;
+			const symLang = await getLangId(entry.uri);
+			for (const ref of refs) {
+				if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) break;
+				if (ref.uri.toString() !== entry.uri.toString()) {
+					const refLang = await getLangId(ref.uri);
+					if (refLang && symLang && refLang !== symLang) continue;
+				}
+				const enclosing = this._findEnclosingSymbol(
+					allFlat,
+					ref.uri,
+					ref.range.start,
+				);
+				if (!enclosing || enclosing === sym) continue;
+				const callerName = nameToCanonical.get(enclosing);
+				if (!callerName) continue;
+				addEdge(callerName, canonical);
+			}
+		}
+
+		if (edgeSet.size >= CODE_GRAPH_MAX_EDGES) {
+			warnings.push(`Edge cap reached (${CODE_GRAPH_MAX_EDGES}). Truncating.`);
+		}
+
+		if (warnings.length > 0) {
+			for (const w of warnings) this._log(w);
+		}
+
+		return { edges: Array.from(edgeSet), symbolTable: table, warnings };
+	}
+
+	private async _collectFolderFiles(
+		folderUri: vscode.Uri,
+	): Promise<vscode.Uri[]> {
+		const out: vscode.Uri[] = [];
+		const walk = async (dir: vscode.Uri, depth: number): Promise<void> => {
+			if (depth > 5) return;
+			if (out.length >= CODE_GRAPH_MAX_FOLDER_FILES) return;
+			let entries: [string, vscode.FileType][];
+			try {
+				entries = await vscode.workspace.fs.readDirectory(dir);
+			} catch {
+				return;
+			}
+			for (const [name, type] of entries) {
+				if (out.length >= CODE_GRAPH_MAX_FOLDER_FILES) return;
+				if (name.startsWith(".") || name === "node_modules") continue;
+				const child = vscode.Uri.joinPath(dir, name);
+				if (type === vscode.FileType.Directory) {
+					await walk(child, depth + 1);
+				} else if (type === vscode.FileType.File) {
+					if (
+						/\.(ts|tsx|js|jsx|mjs|cjs|py|java|c|cpp|cc|h|hpp|cs|go|rs|swift|kt|scala|rb|php|lua|fs)$/i.test(
+							name,
+						)
+					) {
+						out.push(child);
+					}
+				}
+			}
+		};
+		await walk(folderUri, 0);
+		return out;
+	}
+}
+
 class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private topicsSubject = new Subject<any>();
 	private _lastSearchPattern: string = "";
 	private _lastFilesToInclude: string = "";
+	private _symbolTable: CodeSymbolTable = new Map();
+	private _currentMode: CodeGraphMode = "text";
+	private _codeGraphBuilder = new CodeGraphBuilder((msg) =>
+		console.log("[InfraNodus CodeGraph]", msg),
+	);
 
 	constructor(
 		private readonly _extensionUri: vscode.Uri,
@@ -424,7 +889,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 	public getPartOfSpeechToProcess(): string {
 		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
-		return config.get("partOfSpeechToProcess") || "WORDS_IF_NO_HASHTAGS";
+		return config.get("partOfSpeechToProcess") || "HASHTAGS_AND_WORDS";
 	}
 
 	public getContentToSend(): string {
@@ -563,10 +1028,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								? message.payload.nodes
 								: [];
 
-					if (
-						navPayloadType === "click" ||
-						navPayloadType === "search"
-					) {
+					if (navPayloadType === "click" || navPayloadType === "search") {
 						const tokens = (navPayloadNodes as unknown[])
 							.map((raw) => {
 								const node = String(raw ?? "");
@@ -585,6 +1047,46 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							break;
 						}
 
+						// Code-mode: jump to symbol definition via the per-graph symbol table.
+						if (this._currentMode === "code" && this._symbolTable.size > 0) {
+							const lastToken = tokens[tokens.length - 1]
+								?.toLowerCase()
+								.replace(/\s+/g, "");
+							const symbol = lastToken
+								? this._symbolTable.get(lastToken)
+								: undefined;
+							if (symbol) {
+								try {
+									const doc = await vscode.workspace.openTextDocument(
+										symbol.uri,
+									);
+									const editor = await vscode.window.showTextDocument(doc);
+									editor.revealRange(
+										symbol.range,
+										vscode.TextEditorRevealType.InCenter,
+									);
+									editor.selection = new vscode.Selection(
+										symbol.range.start,
+										symbol.range.start,
+									);
+									console.log(
+										`[InfraNodus] ${navPayloadType} → navigate to symbol`,
+										{
+											canonicalName: symbol.canonicalName,
+											uri: symbol.uri.toString(),
+										},
+									);
+									break;
+								} catch (err) {
+									console.warn(
+										"[InfraNodus] failed to navigate to symbol, falling back to find-in-files",
+										err,
+									);
+								}
+							}
+							// fall through to find-in-files if not resolvable
+						}
+
 						const filesToInclude = this.generateCurrentUrl();
 						const searchPattern =
 							navPayloadType === "click"
@@ -595,10 +1097,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 						this._lastSearchPattern = searchPattern;
 						this._lastFilesToInclude = filesToInclude;
-						console.log(
-							`[InfraNodus] ${navPayloadType} → find-in-files`,
-							{ searchPattern, filesToInclude, tokens },
-						);
+						console.log(`[InfraNodus] ${navPayloadType} → find-in-files`, {
+							searchPattern,
+							filesToInclude,
+							tokens,
+						});
 						await this.executeFileSearch({
 							searchPattern,
 							filesToInclude,
@@ -724,8 +1227,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							contextText = filtered.join("\n\n");
 							scopeLabel = `Concepts: ${selectedWords.join(", ")}`;
 							if (!contextText) {
-								emptyReason =
-									"No statements reference the selected concepts.";
+								emptyReason = "No statements reference the selected concepts.";
 							}
 						} else if (selectedClusters.length > 0) {
 							const topicLabels = selectedClusters.map(
@@ -750,8 +1252,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								contextText = all.join("\n\n");
 								scopeLabel = `Topics: ${topicLabels.join(", ")}`;
 								if (!contextText) {
-									emptyReason =
-										"No statements found in the selected topics.";
+									emptyReason = "No statements found in the selected topics.";
 								}
 							}
 						}
@@ -917,9 +1418,29 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "exportAnalyzedContextToInfraNodus":
 					await this.exportAnalyzedContextToInfraNodus();
 					return;
+				case "requestAiAdviceExportPreview": {
+					const previewText = (message.text || "").toString();
+					const adviceKindRaw = (message.adviceKind || "advice").toString();
+					if (!previewText.trim()) {
+						this._view?.webview.postMessage({
+							command: "exportPreviewUnavailable",
+							reason: "No AI response available to export yet.",
+						});
+						vscode.window.showInformationMessage(
+							"No AI response available to export yet.",
+						);
+						return;
+					}
+					const defaultName = this.getAiAdviceExportGraphName(adviceKindRaw);
+					this._view?.webview.postMessage({
+						command: "showExportPreview",
+						defaultName,
+						text: previewText,
+					});
+					return;
+				}
 				case "requestExportPreview": {
-					const previewText =
-						this._clipboardProvider.getCurrentContent() || "";
+					const previewText = this._clipboardProvider.getCurrentContent() || "";
 					const defaultName = this.getDefaultExportGraphName();
 					if (!previewText) {
 						this._view?.webview.postMessage({
@@ -1099,7 +1620,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "promptQuestion",
 			develop: "promptIdea",
 			summarize: "promptSummary",
-			"graph summary":"promptSummary",
+			"graph summary": "promptSummary",
 			chat: "promptChat",
 			context: "promptContext",
 			context_gap: "promptContextGap",
@@ -1123,7 +1644,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
-			"graph summary":"Graph Summary",
+			"graph summary": "Graph Summary",
 			chat: "Chat",
 			context: "Context",
 			context_gap: "Context Gap",
@@ -1138,7 +1659,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			question: "question",
 			develop: "develop",
 			summarize: "summary",
-			"graph summary":"graph summary",
+			"graph summary": "graph summary",
 		};
 		return requestModeMap[action];
 	}
@@ -1293,6 +1814,21 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		);
 	}
 
+	/**
+	 * Default graph name for AI-advice exports.
+	 * Format: <analyzed-file>-ai-<kind-slug>
+	 * Example: extension.ts-ai-idea, README.md-ai-bridge-gap
+	 */
+	public getAiAdviceExportGraphName(adviceKind: string): string {
+		const base = this.getDefaultExportGraphName();
+		const slug =
+			adviceKind
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, "-")
+				.replace(/^-+|-+$/g, "") || "advice";
+		return `${base}-ai-${slug}`;
+	}
+
 	public async exportTextToInfraNodus({
 		name,
 		text,
@@ -1387,6 +1923,137 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		await this.exportTextToInfraNodus({ name: graphName, text });
 	}
 
+	private _getFileExtension(fileName?: string): string {
+		if (!fileName) return "";
+		const last = fileName.split(/[\\/]/).pop() || fileName;
+		const dot = last.lastIndexOf(".");
+		if (dot < 0) return "";
+		return last.slice(dot + 1).toLowerCase();
+	}
+
+	private static readonly _TEXT_EXTENSIONS = new Set([
+		"md",
+		"mdc",
+		"txt",
+		"rst",
+		"adoc",
+		"org",
+		"wiki",
+		"log",
+		"markdown",
+		"text",
+	]);
+
+	private static readonly _CODE_EXTENSIONS = new Set([
+		"ts",
+		"tsx",
+		"js",
+		"jsx",
+		"mjs",
+		"cjs",
+		"py",
+		"java",
+		"c",
+		"cpp",
+		"cc",
+		"h",
+		"hpp",
+		"cs",
+		"go",
+		"rs",
+		"swift",
+		"kt",
+		"scala",
+		"rb",
+		"php",
+		"lua",
+		"fs",
+		"m",
+		"mm",
+		"vb",
+		"r",
+		"dart",
+		"groovy",
+		"clj",
+		"pl",
+		"pm",
+		"sh",
+		"bash",
+		"zsh",
+	]);
+
+	/**
+	 * Resolve the effective content-mode for this invocation.
+	 * AUTO inspects the file extension; explicit modes pass through.
+	 * `fileName` is omitted in folder scope — AUTO defaults to code there
+	 * since the builder gracefully falls back if no symbols are found.
+	 */
+	private _resolveContentMode(
+		fileName?: string,
+	): "PARSED_TEXT_ONLY" | "PARSED_CODE" | "FULL_FILE_CONTENTS" {
+		const raw = this.getContentToSend();
+		if (raw !== "AUTO") {
+			if (
+				raw === "PARSED_TEXT_ONLY" ||
+				raw === "PARSED_CODE" ||
+				raw === "FULL_FILE_CONTENTS"
+			) {
+				return raw;
+			}
+			return "PARSED_TEXT_ONLY";
+		}
+		const ext = this._getFileExtension(fileName);
+		if (!ext) {
+			// Folder scope or extensionless file: try code; builder falls back if empty.
+			return "PARSED_CODE";
+		}
+		if (InfraNodusViewProvider._TEXT_EXTENSIONS.has(ext)) {
+			return "PARSED_TEXT_ONLY";
+		}
+		if (InfraNodusViewProvider._CODE_EXTENSIONS.has(ext)) {
+			return "PARSED_CODE";
+		}
+		// Unknown extension: default to text (safer for non-code data files).
+		return "PARSED_TEXT_ONLY";
+	}
+
+	private _isCodeMode(fileName?: string): boolean {
+		return this._resolveContentMode(fileName) === "PARSED_CODE";
+	}
+
+	private _resetCodeGraphState(fileName?: string) {
+		this._symbolTable = new Map();
+		this._currentMode = this._isCodeMode(fileName) ? "code" : "text";
+	}
+
+	private _buildRequestBody(name: string, text: string) {
+		if (this._currentMode === "code") {
+			return {
+				name,
+				text,
+				aiTopics: true,
+				stopwords: [] as string[],
+				contextSettings: {
+					partOfSpeechToProcess: "HASHTAGS_AND_WORDS",
+					language: "ZZ",
+					doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+					mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+				},
+			};
+		}
+		return {
+			name,
+			text,
+			aiTopics: true,
+			stopwords: this.getInfraNodusStopwords(),
+			contextSettings: {
+				partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
+				doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+				mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+			},
+		};
+	}
+
 	public async processDocument(document?: vscode.TextDocument) {
 		try {
 			// Show loading overlay
@@ -1399,12 +2066,40 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 
+			// Reset mode/symbol-table at top so in-flight clicks always match
+			// the graph the user is currently looking at. AUTO resolves based on
+			// the document's file extension here.
+			this._resetCodeGraphState(documentToProcess.fileName);
+
 			const text = documentToProcess.getText();
 
-			const textToProcess = this._processTextForAnalysis(
-				text,
-				documentToProcess.fileName,
-			);
+			let textToProcess: string;
+			if (this._currentMode === "code") {
+				const build =
+					await this._codeGraphBuilder.buildForDocument(documentToProcess);
+				if (!build || build.edges.length === 0) {
+					// Only warn the user when they explicitly asked for code mode.
+					// Under AUTO, fall back to text silently — that's the contract.
+					if (this.getContentToSend() === "PARSED_CODE") {
+						vscode.window.showWarningMessage(
+							"InfraNodus: no code symbols found in this file. The language server may not be installed or is still indexing.",
+						);
+					}
+					this._currentMode = "text";
+					textToProcess = this._processTextForAnalysis(
+						text,
+						documentToProcess.fileName,
+					);
+				} else {
+					this._symbolTable = build.symbolTable;
+					textToProcess = build.edges.join("\n");
+				}
+			} else {
+				textToProcess = this._processTextForAnalysis(
+					text,
+					documentToProcess.fileName,
+				);
+			}
 
 			const apiKey = await this.getApiKey();
 			if (!apiKey) {
@@ -1412,17 +2107,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 
-			const textRequest = {
-				name: documentToProcess.fileName.split("/").pop() || "untitled",
-				text: textToProcess,
-				aiTopics: true,
-				stopwords: this.getInfraNodusStopwords(),
-				contextSettings: {
-					partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
-					doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
-					mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
-				},
-			};
+			const textRequest = this._buildRequestBody(
+				documentToProcess.fileName.split("/").pop() || "untitled",
+				textToProcess,
+			);
 			// console.log('InfraNodus API Request:', textRequest);
 
 			// Try with Bearer token format
@@ -1478,7 +2166,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				response.data.entriesAndGraphOfContext &&
 				response.data.entriesAndGraphOfContext.graph
 			) {
-				this._clipboardProvider.updateCurrentContent(textToProcess);
+				// In code mode, keep the original source in the clipboard so
+				// AI-chat-from-graph sees code, not the edge-list serialization.
+				this._clipboardProvider.updateCurrentContent(
+					this._currentMode === "code" ? text : textToProcess,
+				);
 
 				const graphObject = response.data.entriesAndGraphOfContext.graph;
 				const statementsObject =
@@ -1565,6 +2257,45 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		folderUri: vscode.Uri,
 	): Promise<string | undefined> {
 		try {
+			// Reset mode/symbol-table at top so in-flight clicks always match
+			// the graph the user is currently looking at.
+			this._resetCodeGraphState();
+
+			if (this._currentMode === "code") {
+				const build = await this._codeGraphBuilder.buildForFolder(folderUri);
+				if (!build || build.edges.length === 0) {
+					// Only warn the user when they explicitly asked for code mode.
+					// Under AUTO, fall back to text silently — that's the contract
+					// (e.g. a folder of only .md files shouldn't produce a warning).
+					if (this.getContentToSend() === "PARSED_CODE") {
+						vscode.window.showWarningMessage(
+							"InfraNodus: no code symbols found in this folder. Falling back to text mode for this run.",
+						);
+					}
+					this._currentMode = "text";
+					// fall through to existing text flow
+				} else {
+					this._symbolTable = build.symbolTable;
+					this._clipboardProvider.updateCurrentUrl(
+						vscode.workspace.asRelativePath(folderUri.fsPath),
+					);
+					// Also fill the clipboard with the original (text-extracted) source
+					// so AI-chat-from-graph still has something useful to read.
+					let sourceForClipboard: string | undefined;
+					try {
+						sourceForClipboard = await this.processDirectory(folderUri);
+					} catch {
+						sourceForClipboard = undefined;
+					}
+					await this.processContent(
+						build.edges.join("\n"),
+						folderUri.fsPath,
+						sourceForClipboard,
+					);
+					return build.edges.join("\n");
+				}
+			}
+
 			const content = await this.processDirectory(folderUri);
 			if (content) {
 				this._clipboardProvider.updateCurrentUrl(
@@ -1583,7 +2314,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
-	public async processContent(content: string, name: string) {
+	public async processContent(
+		content: string,
+		name: string,
+		sourceForClipboard?: string,
+	) {
 		try {
 			if (!this._view) {
 				throw new Error("Webview not initialized");
@@ -1597,17 +2332,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				return;
 			}
 
-			const textRequest = {
-				name: name,
-				text: content,
-				aiTopics: true,
-				stopwords: this.getInfraNodusStopwords(),
-				contextSettings: {
-					partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
-					doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
-					mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
-				},
-			};
+			const textRequest = this._buildRequestBody(name, content);
 
 			const formattedApiKey = apiKey.startsWith("Bearer ")
 				? apiKey
@@ -1660,7 +2385,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				response.data.entriesAndGraphOfContext &&
 				response.data.entriesAndGraphOfContext.graph
 			) {
-				this._clipboardProvider.updateCurrentContent(content);
+				// In code mode (or when caller passed source), keep the original
+				// source text in the clipboard so AI-chat-from-graph sees code,
+				// not the edge-list serialization sent to the API.
+				this._clipboardProvider.updateCurrentContent(
+					sourceForClipboard !== undefined ? sourceForClipboard : content,
+				);
 
 				const graphObject = response.data.entriesAndGraphOfContext.graph;
 				const statementsObject =
@@ -1921,7 +2651,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public _processTextForAnalysis(text: string, fileName: string): string {
-		if (this.getContentToSend() === "PARSED_TEXT_ONLY") {
+		const effective = this._resolveContentMode(fileName);
+		// PARSED_CODE never reaches this method via the main paths — processDocument /
+		// processFolderContent dispatch to the code-graph builder. If something does
+		// land here in PARSED_CODE mode (e.g. the diff path, which explicitly opts
+		// out of code mode), fall back to text extraction.
+		if (effective === "PARSED_TEXT_ONLY" || effective === "PARSED_CODE") {
 			return this._extractParsedText(text, fileName);
 		}
 		return this._compressCodeBlocks(text);
@@ -1939,34 +2674,53 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		// CSS class lists: all lowercase alphanumeric + hyphens/underscores/spaces, with hyphens
 		if (/^[a-z0-9_\-\s]+$/.test(s) && /-/.test(s) && /\s/.test(s)) return true;
 		// CSS color/function values: rgb(...), rgba(...), hsl(...), var(...), calc(...)
-		if (/^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient)\s*\(/i.test(s)) return true;
+		if (
+			/^(rgba?|hsla?|var|calc|url|linear-gradient|radial-gradient)\s*\(/i.test(
+				s,
+			)
+		)
+			return true;
 		// Media queries / CSS sizes: contains px/em/rem/vh/vw with parens or commas, no sentence punctuation
 		if (/\b\d+(px|em|rem|vh|vw|%)\b/.test(s) && !/[.!?]/.test(s)) return true;
 		return false;
 	}
 
 	public _stripJsScaffolding(input: string): string {
-		return input
-			// import statements
-			.replace(/^\s*import\s+[\s\S]+?;?\s*$/gm, "")
-			// require declarations
-			.replace(/^\s*(const|let|var)\s+[\w{},\s]+\s*=\s*require\([^)]+\)\s*;?\s*$/gm, "")
-			// simple const string/number assignments (likely URLs, constants)
-			.replace(/^\s*(const|let|var)\s+\w+\s*=\s*['"`][^'"`]*['"`]\s*;?\s*$/gm, "")
-			// function declarations
-			.replace(/^\s*(export\s+default\s+)?(async\s+)?function\s+\w+\s*\([^)]*\)\s*\{?\s*$/gm, "")
-			// arrow function declarations
-			.replace(/^\s*(export\s+(default\s+)?)?(const|let|var)\s+\w+\s*=\s*(\([^)]*\)|\w+)\s*=>\s*\(?\s*$/gm, "")
-			// return statements opening
-			.replace(/^\s*return\s*\(?\s*$/gm, "")
-			// closing scaffolding: ); } });
-			.replace(/^\s*\)\s*;?\s*\}?\s*\)?\s*;?\s*$/gm, "")
-			.replace(/^\s*\}\s*\)?\s*;?\s*$/gm, "")
-			// module.exports
-			.replace(/^\s*module\.exports\s*=\s*[\w,\s{}]+\s*;?\s*$/gm, "")
-			.replace(/^\s*export\s+(default\s+)?[\w,\s{}]+\s*;?\s*$/gm, "")
-			// JSX block comments {/* ... */}
-			.replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+		return (
+			input
+				// import statements
+				.replace(/^\s*import\s+[\s\S]+?;?\s*$/gm, "")
+				// require declarations
+				.replace(
+					/^\s*(const|let|var)\s+[\w{},\s]+\s*=\s*require\([^)]+\)\s*;?\s*$/gm,
+					"",
+				)
+				// simple const string/number assignments (likely URLs, constants)
+				.replace(
+					/^\s*(const|let|var)\s+\w+\s*=\s*['"`][^'"`]*['"`]\s*;?\s*$/gm,
+					"",
+				)
+				// function declarations
+				.replace(
+					/^\s*(export\s+default\s+)?(async\s+)?function\s+\w+\s*\([^)]*\)\s*\{?\s*$/gm,
+					"",
+				)
+				// arrow function declarations
+				.replace(
+					/^\s*(export\s+(default\s+)?)?(const|let|var)\s+\w+\s*=\s*(\([^)]*\)|\w+)\s*=>\s*\(?\s*$/gm,
+					"",
+				)
+				// return statements opening
+				.replace(/^\s*return\s*\(?\s*$/gm, "")
+				// closing scaffolding: ); } });
+				.replace(/^\s*\)\s*;?\s*\}?\s*\)?\s*;?\s*$/gm, "")
+				.replace(/^\s*\}\s*\)?\s*;?\s*$/gm, "")
+				// module.exports
+				.replace(/^\s*module\.exports\s*=\s*[\w,\s{}]+\s*;?\s*$/gm, "")
+				.replace(/^\s*export\s+(default\s+)?[\w,\s{}]+\s*;?\s*$/gm, "")
+				// JSX block comments {/* ... */}
+				.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+		);
 	}
 
 	public _extractParsedText(text: string, fileName: string): string {
@@ -2030,7 +2784,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 
 		// HTML-like files: extract visible text content
-		if (["html", "htm", "xml", "svg", "vue", "svelte", "jsx", "tsx"].includes(ext)) {
+		if (
+			["html", "htm", "xml", "svg", "vue", "svelte", "jsx", "tsx"].includes(ext)
+		) {
 			let cleaned = text
 				.replace(/<script[\s\S]*?<\/script>/gi, "")
 				.replace(/<style[\s\S]*?<\/style>/gi, "");
@@ -2147,7 +2903,7 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 			question: "Question",
 			develop: "Idea",
 			summarize: "Summary",
-			"graph summary":"Graph Summary",
+			"graph summary": "Graph Summary",
 			context: "Context",
 			context_gap: "Context Gap",
 		};
