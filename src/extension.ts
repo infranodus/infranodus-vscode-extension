@@ -1418,6 +1418,27 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "exportAnalyzedContextToInfraNodus":
 					await this.exportAnalyzedContextToInfraNodus();
 					return;
+				case "requestAiAdviceExportPreview": {
+					const previewText = (message.text || "").toString();
+					const adviceKindRaw = (message.adviceKind || "advice").toString();
+					if (!previewText.trim()) {
+						this._view?.webview.postMessage({
+							command: "exportPreviewUnavailable",
+							reason: "No AI response available to export yet.",
+						});
+						vscode.window.showInformationMessage(
+							"No AI response available to export yet.",
+						);
+						return;
+					}
+					const defaultName = this.getAiAdviceExportGraphName(adviceKindRaw);
+					this._view?.webview.postMessage({
+						command: "showExportPreview",
+						defaultName,
+						text: previewText,
+					});
+					return;
+				}
 				case "requestExportPreview": {
 					const previewText = this._clipboardProvider.getCurrentContent() || "";
 					const defaultName = this.getDefaultExportGraphName();
@@ -1791,6 +1812,21 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			this._clipboardProvider.getCurrentUrl()?.split(/[\\/]/).pop() ||
 			"vscode-context"
 		);
+	}
+
+	/**
+	 * Default graph name for AI-advice exports.
+	 * Format: <analyzed-file>-ai-<kind-slug>
+	 * Example: extension.ts-ai-idea, README.md-ai-bridge-gap
+	 */
+	public getAiAdviceExportGraphName(adviceKind: string): string {
+		const base = this.getDefaultExportGraphName();
+		const slug =
+			adviceKind
+				.toLowerCase()
+				.replace(/[^a-z0-9]+/g, "-")
+				.replace(/^-+|-+$/g, "") || "advice";
+		return `${base}-ai-${slug}`;
 	}
 
 	public async exportTextToInfraNodus({

@@ -2,6 +2,20 @@
 
 All notable changes to the **InfraNodus Graph View** extension are documented here.
 
+## 0.8.1
+
+### Added
+
+- **Export button on the AI advice panel.** A new Export action sits next to Copy in the AI prompt / response panel. Click it to send the currently visible AI prompt or response to InfraNodus as its own graph.
+  - **Selection-aware**: if you have text selected inside the panel, only the selection is exported. Otherwise, the full visible content (prompt or response) is sent.
+  - **Reuses the existing export-preview flow**: same modal as the main "Export Analyzed Content" button — editable graph name, editable text, Submit / Cancel.
+  - **Auto-named graph**: `<analyzed-file>-ai-<kind-slug>`, derived from the panel badge. Examples: `extension.ts-ai-idea`, `README.md-ai-question`, `notes.md-ai-bridge-gap`.
+  - **Empty-state guard**: clicking Export before any advice has loaded shows a quick "Nothing to export yet" hint instead of opening an empty preview.
+
+### Fixed
+
+- **AUTO mode no longer warns "no code symbols found"** when opening a folder that contains only prose files (e.g. all `.md`). The warning was correct under explicit `PARSED_CODE` but spurious under `AUTO`, where falling back to text mode is by design. The same silencing applies to file scope: AUTO opening a code-extension file whose language server isn't available now falls back silently. The warning still appears when the user explicitly selected `PARSED_CODE` and got no symbols back.
+
 ## 0.8.0
 
 ### Added

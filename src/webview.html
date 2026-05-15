@@ -710,6 +710,14 @@
                 <button id="promptPanelToggle" class="prompt-panel-copy" title="Switch between response and prompt" style="display:none;">
                     AI Response
                 </button>
+                <button id="promptPanelExport" class="prompt-panel-copy" title="Export this AI response to InfraNodus (or selected text if any)">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12"/>
+                        <path d="m7 8 5-5 5 5"/>
+                        <path d="M5 21h14"/>
+                    </svg>
+                    Export
+                </button>
                 <button id="promptPanelCopy" class="prompt-panel-copy" title="Copy prompt to clipboard">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <rect width="8" height="4" x="8" y="2" rx="1" ry="1"/>
@@ -850,6 +858,7 @@
             const promptPanelBody = document.getElementById('promptPanelBody');
             const promptPanelClose = document.getElementById('promptPanelClose');
             const promptPanelCopy = document.getElementById('promptPanelCopy');
+            const promptPanelExport = document.getElementById('promptPanelExport');
             const promptPanelFind = document.getElementById('promptPanelFind');
             const promptPanelToggle = document.getElementById('promptPanelToggle');
             const promptPanelNextAdvice = document.getElementById('promptPanelNextAdvice');
@@ -1164,6 +1173,53 @@
 
             contextPanelExport.addEventListener('click', () => {
                 vscode.postMessage({ command: 'exportAnalyzedContextToInfraNodus' });
+            });
+
+            promptPanelExport.addEventListener('click', () => {
+                const showingResponse = currentPromptView === 'response';
+                const currentResponseText = currentResponseTexts[currentResponseIndex] || '';
+                const fullText = showingResponse ? currentResponseText : currentPromptText;
+
+                // Prefer the user's selection inside the panel body, if any.
+                let textToExport = fullText;
+                let usingSelection = false;
+                try {
+                    const sel = window.getSelection();
+                    if (sel && !sel.isCollapsed) {
+                        const selText = (sel.toString() || '').trim();
+                        if (selText) {
+                            // Verify selection is inside the panel body
+                            let node = sel.anchorNode;
+                            while (node && node !== promptPanelBody && node !== document.body) {
+                                node = node.parentNode;
+                            }
+                            if (node === promptPanelBody) {
+                                textToExport = sel.toString();
+                                usingSelection = true;
+                            }
+                        }
+                    }
+                } catch (err) {
+                    // Selection API unavailable — fall back to full text.
+                }
+
+                if (!textToExport || !textToExport.trim()) {
+                    promptPanelFeedback.textContent = 'Nothing to export yet';
+                    promptPanelFeedback.classList.add('visible');
+                    setTimeout(() => {
+                        promptPanelFeedback.textContent = 'Copied to clipboard';
+                        promptPanelFeedback.classList.remove('visible');
+                    }, 1800);
+                    return;
+                }
+
+                vscode.postMessage({
+                    command: 'requestAiAdviceExportPreview',
+                    text: textToExport,
+                    adviceKind: currentPromptLabel || 'advice',
+                    view: showingResponse ? 'response' : 'prompt',
+                    usingSelection
+                });
             });
 
             function setExportPreviewFeedback(text, isError) {
