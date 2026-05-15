@@ -1866,7 +1866,35 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					);
 				} else if (choice === getKey) {
 					vscode.env.openExternal(
-						vscode.Uri.parse("https://infranodus.com/api-access"),
+						this.withUtm("https://infranodus.com/api-access"),
+					);
+				}
+			});
+	}
+
+	/**
+	 * The server rejected the request with a "log in" error — either the free
+	 * allowance is exhausted, the key is invalid, or it has expired. Show a
+	 * popup with quick actions to get/update the key.
+	 */
+	private notifyApiKeyNeeded() {
+		const openSettings = "Open Settings";
+		const getKey = "Get an API Key";
+		vscode.window
+			.showInformationMessage(
+				"InfraNodus needs an API key for this request — your free allowance may be exhausted or the existing key is no longer valid. Get a key at https://infranodus.com/api-access and add it in the extension's settings.",
+				getKey,
+				openSettings,
+			)
+			.then((choice) => {
+				if (choice === openSettings) {
+					vscode.commands.executeCommand(
+						"workbench.action.openSettings",
+						"infranodus-graph-view.apiKey",
+					);
+				} else if (choice === getKey) {
+					vscode.env.openExternal(
+						this.withUtm("https://infranodus.com/api-access"),
 					);
 				}
 			});
@@ -1893,7 +1921,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			.then((choice) => {
 				if (choice === signUp) {
 					vscode.env.openExternal(
-						vscode.Uri.parse("https://infranodus.com/api-access"),
+						this.withUtm("https://infranodus.com/api-access"),
 					);
 				} else if (choice === openSettings) {
 					vscode.commands.executeCommand(
@@ -1908,6 +1936,26 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private formatAuthHeader(apiKey: string | undefined): string {
 		if (!apiKey) return "Bearer ";
 		return apiKey.startsWith("Bearer ") ? apiKey : `Bearer ${apiKey}`;
+	}
+
+	/**
+	 * Append `utm_source=vscode_extension` to any URL we open externally from
+	 * the extension UI, so traffic originating from VS Code is attributable.
+	 * Preserves existing query strings and fragments.
+	 */
+	private withUtm(rawUrl: string): vscode.Uri {
+		const UTM = "utm_source=vscode_extension";
+		let url = rawUrl;
+		let fragment = "";
+		const hashIndex = url.indexOf("#");
+		if (hashIndex !== -1) {
+			fragment = url.slice(hashIndex);
+			url = url.slice(0, hashIndex);
+		}
+		if (!/[?&]utm_source=/.test(url)) {
+			url += url.includes("?") ? `&${UTM}` : `?${UTM}`;
+		}
+		return vscode.Uri.parse(url + fragment);
 	}
 
 	public getDefaultExportGraphName(): string {
@@ -1990,9 +2038,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				throw new Error(errorText);
 			}
 
-			vscode.window.showInformationMessage(
-				`Analyzed context exported to InfraNodus graph "${name}".`,
-			);
+			const openLabel = "Open in InfraNodus";
+			vscode.window
+				.showInformationMessage(
+					`Analyzed context exported to InfraNodus graph "${name}".`,
+					openLabel,
+				)
+				.then((choice) => {
+					if (choice === openLabel) {
+						vscode.env.openExternal(this.withUtm(this.getServerUrl()));
+					}
+				});
 			return { success: true };
 		} catch (error) {
 			const message = getInfraNodusRequestErrorMessage(error);
@@ -2244,9 +2300,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						? response.data.error
 						: JSON.stringify(response.data.error);
 				if (errorText.includes("log in")) {
-					vscode.window.showInformationMessage(
-						`Please, add your InfraNodus API key in the extension settings.`,
-					);
+					this.notifyApiKeyNeeded();
 					return;
 				}
 				console.warn(
@@ -2464,9 +2518,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						? response.data.error
 						: JSON.stringify(response.data.error);
 				if (errorText.includes("log in")) {
-					vscode.window.showInformationMessage(
-						`Please, add your InfraNodus API key in the extension settings.`,
-					);
+					this.notifyApiKeyNeeded();
+					if (this._view) {
+						this._view.webview.postMessage({ type: "PROCESSING_COMPLETE" });
+					}
 					return;
 				}
 				console.warn(
