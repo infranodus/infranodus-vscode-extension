@@ -1373,7 +1373,7 @@
                     const theme = message.theme === 'dark' || message.theme === 'light' ? message.theme : 'light';
                     applyTheme(theme);
                     const iframeUrl = message.url
-                        + '?iframe=true&app=vscode'
+                        + '?iframe=true&action=search&app=vscode'
                         + '&theme=' + theme
                         + (message.userId ? '&user=' + message.userId : '');
                     // Store the URL and theme using vscode state

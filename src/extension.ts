@@ -539,6 +539,74 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						return;
 					}
 				case "processExternalAction":
+					// action=search graph events: "click" navigates to the last-clicked
+					// concept in the analyzed files, "search" runs Find-in-Files for
+					// the full node list (wikilinks unwrapped, all words required).
+					// Mirrors infranodus-obsidian-plugin GraphView.tsx behavior.
+					// The graph sends two shapes: { payload: { action: { type, nodes } } }
+					// (current build) and { payload: { type, nodes } } (newer envelope).
+					const rawPayloadAction = message.payload?.action;
+					const navPayloadType: string | undefined =
+						rawPayloadAction &&
+						typeof rawPayloadAction === "object" &&
+						typeof rawPayloadAction.type === "string"
+							? rawPayloadAction.type
+							: typeof message.payload?.type === "string"
+								? message.payload.type
+								: undefined;
+					const navPayloadNodes: unknown =
+						rawPayloadAction &&
+						typeof rawPayloadAction === "object" &&
+						Array.isArray(rawPayloadAction.nodes)
+							? rawPayloadAction.nodes
+							: Array.isArray(message.payload?.nodes)
+								? message.payload.nodes
+								: [];
+
+					if (
+						navPayloadType === "click" ||
+						navPayloadType === "search"
+					) {
+						const tokens = (navPayloadNodes as unknown[])
+							.map((raw) => {
+								const node = String(raw ?? "");
+								const wikilink = node.match(/^\[\[(.+)\]\]$/);
+								if (wikilink) {
+									return wikilink[1].replace(/_/g, " ").trim();
+								}
+								return node.trim();
+							})
+							.filter((t) => t.length > 0);
+
+						if (tokens.length === 0) {
+							console.log(
+								`[InfraNodus] ${navPayloadType} event with no usable nodes`,
+							);
+							break;
+						}
+
+						const filesToInclude = this.generateCurrentUrl();
+						const searchPattern =
+							navPayloadType === "click"
+								? this.generateSearchPatternFromArray([
+										tokens[tokens.length - 1],
+									])
+								: this.generateAndSearchPatternFromArray(tokens);
+
+						this._lastSearchPattern = searchPattern;
+						this._lastFilesToInclude = filesToInclude;
+						console.log(
+							`[InfraNodus] ${navPayloadType} → find-in-files`,
+							{ searchPattern, filesToInclude, tokens },
+						);
+						await this.executeFileSearch({
+							searchPattern,
+							filesToInclude,
+							triggerSearch: true,
+						});
+						break;
+					}
+
 					// Dual-shape contract: when the graph emits a v1+ meta envelope,
 					// trust meta.action. Selection state was already propagated via
 					// UPDATE_SELECTED_NODES / UPDATE_GROUPS before EXTERNAL_ACTION
@@ -922,9 +990,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	public async executeFileSearch({
 		searchPattern,
 		filesToInclude,
+		triggerSearch = false,
 	}: {
 		searchPattern: string;
 		filesToInclude: string;
+		triggerSearch?: boolean;
 	}) {
 		return await vscode.commands.executeCommand(
 			"workbench.action.findInFiles",
@@ -933,7 +1003,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				isRegex: true,
 				isCaseSensitive: false,
 				matchWholeWord: false,
-				triggerSearch: false,
+				triggerSearch,
 				filesToInclude: filesToInclude,
 			},
 		);
