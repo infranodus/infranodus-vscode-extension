@@ -2,7 +2,7 @@
 	"name": "infranodus-graph-view",
 	"displayName": "InfraNodus Graph View",
 	"description": "Knowledge graph for your text and code: visualize connections, find gaps, generate context-aware AI prompts.",
-	"version": "0.8.3",
+	"version": "0.8.4",
 	"author": "InfraNodus SAS",
 	"publisher": "infranodus",
 	"repository": {
