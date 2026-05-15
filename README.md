@@ -1,38 +1,45 @@
 # InfraNodus Graph View VSCode / Cursor AI Extension
 
-This VSCode / Cursor AI / Antigravity extension adds a view to the Secondary Side Bar (or wherever else you prefer in your IDE) that displays the [InfraNodus graph visualization](https://infranodus.com). It allows you to use the graph to **visualize the text in markdown files, find connections, identify the main topics, and reveal the gaps** in your content.
+This VSCode / Cursor AI / Antigravity extension adds a graph view to the Secondary Side Bar (or wherever else you prefer in your IDE) that displays the [InfraNodus graph visualization](https://infranodus.com).
+
+It works on **both text and code** — visualize the topics and connections in markdown files, or map out the architecture of a codebase (functions, classes, variables, and the references between them) to **find connections, identify the main and latent components, and reveal the gaps**.
+
+This is super useful for:
+
+- Exploring and optimizing your knowledge base and LLM wiki
+- Steering your LLM's reasoning
+- Finding blind spots in your AI agents' docs, PRDs, and rules
+- Exploring and optimizing your code base
 
 ![InfraNodus Graph Word Search](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension-word-search.gif)
 
-Use it with your **Obsidian vault**, to **optimize your website content**, or in the **[Karpathy's LLM Wiki setup](https://support.noduslabs.com/hc/en-us/articles/26724863249180-Supercharging-LLM-Wiki-with-Knowledge-Graphs-Build-a-Self-Evolving-Research-System)** to get a holistic view of the main topical clusters and ideas in your content as well as to reveal the blind spots that you can bridge with new ideas.
-
-Another powerful use case is to use the graph to steer model's reasoning using the graph prompts it generates. For instance, you can select the clusters that are not linked yet (`content gap`) and generate an AI prompt that helps model generate a response that would link the clusters and bridge the gap between them.
-
-_Note, some people use this extension with their code bases as well, but at the moment it works best on markdown and html files as primarily it's best for text analysis._
-
 ## Features
 
-- Displays InfraNodus graph in VSCode's Secondary Side Bar (or in Cursor's AI agent bar)
+- Displays InfraNodus graph in VSCode's Secondary Side Bar (or in Cursor's AI agent bar) — *see the help section below to understand how to put it into the right sidebar.*
 
-- Use it on individual files or folders
+- Use it on individual files or folders (right-click to activate)
 
 ![InfraNodus Graph View VSCode Extension](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension.png)
 
-- Embedded web view with the InfraNodus graph interface
+- Embedded web view with the **InfraNodus graph interface** — Obsidian-like but better, because it includes network stats and analysis
 
-- AI-powered topic modeling of your content
+- AI-powered **topic modeling** of your content
 
-- Can visualize the diff between files / folders / project
+- **Code architecture graphs**: visualize how functions, classes, methods, and variables in your codebase reference each other — click any node to jump to its definition
 
-- Use the graph interface to search for relevant content and topics
+- Auto-detects whether to run plain text analysis or code-architecture analysis based on file extension (configurable)
+
+- Can visualize the **diff** between files / folders / project
+
+- Use the graph interface to **search for relevant content and topics**
 
 ![InfraNodus Graph Word Search](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension-topic-search.gif)
 
-- Can be used to detect gaps between content blocks
+- Can be used to **detect gaps between content blocks**
 
 ![InfraNodus Graph Word Search](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension-gap-analysis.gif)
 
-- Click the AI buttons to copy the relevant content and paste it into your favorite AI co-pilot (e.g. Cursor AI, Windsurf AI, GitHub Copilot, etc.)
+- Click the **AI buttons to generate prompts** and paste it into your LLM chat (Claude code, Cursor AI, etc.)
 
 ![InfraNodus AI Chat](https://github.com/infranodus/infranodus-vscode-extension/raw/HEAD/resources/infranodus-extension-ai.gif)
 
@@ -42,15 +49,43 @@ _Note, some people use this extension with their code bases as well, but at the 
 
 - You can use this extension with VSCode 1.84.0, Antigravity IDE, Windsurf AI, Cursor AI
 
-- You can open your Obsidian vault in any of the editors above and
+- You can open your Obsidian vault in any of the editors above to get advanced AI capabilities without losing the graph view capacity
 
 - You need an InfraNodus account to use this extension. You can sign up for a free trial at [https://infranodus.com](https://infranodus.com) and then obtain the key at the [InfraNodus API Access Page](https://infranodus.com/api-access).
+
+## Use Cases
+
+This extension can be super useful for the following scenarios:
+
+### Obsidian: Gap Analysis & Knowledge Optimization
+
+Use it with your **Obsidian vault** to **optimize your content structure** or to in the **[Karpathy's LLM Wiki setup](https://support.noduslabs.com/hc/en-us/articles/26724863249180-Supercharging-LLM-Wiki-with-Knowledge-Graphs-Build-a-Self-Evolving-Research-System)**.
+
+This extension's Gap Analysis will show you the clusters of ideas that are not well connected and generate prompts and/or AI ideas that will help you develop this content further.
+
+The extension is based on the [InfraNodus cognitive variability framework](https://infranodus.com/about/cognitive-variability) that optimizes your discourse based on its structure. If your ideas are too connected, it will propose to develop latent topical clusters and peripheral ideas. If they are too dispersed, it will help you make your discourse more coherent.
+
+### Steer Your Model's Reasoning
+
+Another powerful use case is to use the graph to steer your model's reasoning using the prompts it generates. For instance, you can select the clusters that are not linked yet (`content gap`) and generate an AI prompt that helps the model produce a response that links those clusters and bridges the gap — whether they're disconnected topics in your notes or two unrelated parts of your code.
+
+### Optimize Your AI Agent's Docs, Skills, Rules, and History
+
+You can also point the extension to the `.md` or `.mdc` files generated by your coding agents, such as Cursor AI or Claude (available in `~/.claude` or `~/.cursor` folders in your home or project folder). You can then analyze an auto-generated doc or PRD (Product Requirements Document) to reveal the main ideas and potential gaps. Then use these gaps to address the blind spots and optimize your agents' reasoning and workflows.
+
+### Explore Your Codebase
+
+You can use the extension to **explore an unfamiliar codebase** — getting a holistic view of the main clusters and ideas, and revealing the blind spots that you can bridge with new ideas (or new functions).
+
+When you point the extension at a code file or folder, it builds an **architecture reference graph**: nodes are functions, classes, methods, and exported variables; edges are containment and references. Clicking a node in the graph jumps the editor straight to that symbol's definition. This requires a language server for the file (TypeScript/JavaScript, Python, Go, etc.) — VSCode and its forks ship most of these out of the box. The mode is picked automatically per file (text extraction for `.md`, `.txt`, `.rst`, …; code-architecture graph for `.ts`, `.py`, `.go`, …), and you can override it in Settings → _InfraNodus: Text & Code Analysis_.
 
 ## Notes
 
 - This extension is a work in progress and is currently in alpha. We are working on adding more features and optimizing the user experience. For feedback, please, open an issue on [Github](https://github.com/infranodus/infranodus-vscode-extension/issues).
 
-- We recommend that you use it on Obsidian vault and in LLM wiki setups. While some people use this extension on codebases, it does not yet capture all the complexity of connections between the functions. However, you can use it to get a general overview of connections between the functions and variables in a certain folder.
+- For prose (markdown, plain text, docs), the extension shines on Obsidian vaults and LLM wiki setups.
+
+- For code, the extension builds an architecture reference graph — nodes are symbols (functions, classes, methods, exported variables) and edges are containment and references resolved via the language server. It's ideal for getting a bird's-eye view of an unfamiliar folder, spotting tightly-coupled clusters, and finding orphaned or weakly-connected symbols. Code-mode results depend on the language server's coverage of the file, so language support tracks what VSCode itself supports.
 
 ## How to Use
 
@@ -68,7 +103,7 @@ _Note, some people use this extension with their code bases as well, but at the 
 11. You can customize the prompts generated when you click on the graph's AI and context buttons in the extension's settings.
 12. You can also customize the type of processing. For instance, by default the extension will prioritize [[wiki links]] and #hashtags to words, but will also include single words if there are no [[wiki links]] in your text. You might want to choose to process [[wiki links]] only in the settings.
 13. You can add "stopwords" in the settings: the words and terms that the graph should not process. Useful for auxiliary terms and function names.
-14. By default, we process only plain text, however, you can choose to process the full file content also in the Extension settings
+14. By default, the extension uses **Auto** mode for content processing: prose files (`.md`, `.txt`, `.rst`, …) are parsed as text, and code files (`.ts`, `.py`, `.go`, …) are parsed as a code-architecture graph where nodes are functions/classes/variables and clicking a node jumps to its definition. You can override this in Settings → _InfraNodus: Text & Code Analysis_ → _Content To Send_ (e.g. force "Parsed Text Only", "Parsed Code", or "Full File Contents").
 
 ## How to Position the Extension in the Right Sidebar
 
