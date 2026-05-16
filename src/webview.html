@@ -415,6 +415,73 @@
 				);
 			}
 
+			.prompt-panel-body.statements {
+				white-space: normal;
+				display: flex;
+				flex-direction: column;
+				gap: 8px;
+			}
+
+			.context-statement {
+				border: 1px solid var(--panel-border);
+				border-radius: 8px;
+				padding: 8px 10px 6px 10px;
+				display: flex;
+				flex-direction: column;
+				gap: 6px;
+			}
+
+			.context-statement-text {
+				white-space: pre-wrap;
+				word-break: break-word;
+				font-size: 13px;
+				line-height: 1.5;
+				color: var(--panel-body-text);
+			}
+
+			.context-statement-actions {
+				display: flex;
+				justify-content: flex-end;
+				gap: 4px;
+			}
+
+			.context-statement-action {
+				display: inline-flex;
+				align-items: center;
+				gap: 4px;
+				padding: 2px 8px;
+				border-radius: 999px;
+				background: transparent;
+				border: 1px solid var(--panel-border);
+				color: var(--panel-text-muted);
+				font-size: 10px;
+				font-weight: 500;
+				letter-spacing: 0.02em;
+				cursor: pointer;
+				font-family: inherit;
+			}
+
+			.context-statement-action:hover {
+				color: var(--panel-body-text);
+				border-color: var(--badge-border);
+				background: var(--badge-bg);
+			}
+
+			.context-statement-action svg {
+				width: 11px;
+				height: 11px;
+				stroke: currentColor;
+				fill: none;
+				stroke-width: 2;
+				stroke-linecap: round;
+				stroke-linejoin: round;
+			}
+
+			.context-statement-action.copied {
+				color: var(--badge-color);
+				border-color: var(--badge-border);
+			}
+
 			.prompt-panel-body.markdown h1,
 			.prompt-panel-body.markdown h2,
 			.prompt-panel-body.markdown h3 {
@@ -1343,20 +1410,102 @@
 					promptPanel.classList.remove("visible");
 				}
 
+				function renderStatementCards(statements) {
+					const fragment = document.createDocumentFragment();
+					statements.forEach((statement) => {
+						const text = String(statement || "");
+						if (!text) return;
+
+						const card = document.createElement("div");
+						card.className = "context-statement";
+
+						const body = document.createElement("div");
+						body.className = "context-statement-text";
+						body.textContent = text;
+						card.appendChild(body);
+
+						const actions = document.createElement("div");
+						actions.className = "context-statement-actions";
+
+						const copyBtn = document.createElement("button");
+						copyBtn.type = "button";
+						copyBtn.className = "context-statement-action";
+						copyBtn.title = "Copy statement to clipboard";
+						copyBtn.innerHTML =
+							'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+							'<rect width="8" height="4" x="8" y="2" rx="1" ry="1" />' +
+							'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />' +
+							'<path d="M8 4h8" />' +
+							"</svg><span>Copy</span>";
+						copyBtn.addEventListener("click", async () => {
+							try {
+								await navigator.clipboard.writeText(text);
+								const label = copyBtn.querySelector("span");
+								if (label) label.textContent = "Copied";
+								copyBtn.classList.add("copied");
+								setTimeout(() => {
+									if (label) label.textContent = "Copy";
+									copyBtn.classList.remove("copied");
+								}, 1500);
+							} catch (err) {
+								console.error("Failed to copy statement:", err);
+							}
+						});
+						actions.appendChild(copyBtn);
+
+						const findBtn = document.createElement("button");
+						findBtn.type = "button";
+						findBtn.className = "context-statement-action";
+						findBtn.title =
+							"Find this statement in the current document or folder";
+						findBtn.innerHTML =
+							'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">' +
+							'<circle cx="11" cy="11" r="7" />' +
+							'<line x1="21" y1="21" x2="16.65" y2="16.65" />' +
+							"</svg><span>Find</span>";
+						findBtn.addEventListener("click", () => {
+							vscode.postMessage({
+								command: "findStatementInContext",
+								statement: text,
+							});
+						});
+						actions.appendChild(findBtn);
+
+						card.appendChild(actions);
+						fragment.appendChild(card);
+					});
+					contextPanelBody.classList.add("statements");
+					contextPanelBody.replaceChildren(fragment);
+				}
+
+				function renderContextMessage(message) {
+					contextPanelBody.classList.remove("statements");
+					const textNode = document.createTextNode(message);
+					contextPanelBody.replaceChildren(textNode);
+				}
+
 				function showContextPanel({
 					contextText,
+					statements,
 					chips,
 					scopeLabel,
 					emptyReason,
 				}) {
 					currentContextText = contextText || "";
-					if (currentContextText) {
-						contextPanelBody.textContent = currentContextText;
+					const statementList = Array.isArray(statements)
+						? statements.filter((s) => String(s || "").trim().length > 0)
+						: [];
+
+					if (statementList.length > 0) {
+						renderStatementCards(statementList);
+					} else if (currentContextText) {
+						renderContextMessage(currentContextText);
 					} else if (emptyReason) {
-						contextPanelBody.textContent = emptyReason;
+						renderContextMessage(emptyReason);
 					} else {
-						contextPanelBody.textContent =
-							"No analyzed context available yet. Analyze a document first.";
+						renderContextMessage(
+							"No analyzed context available yet. Analyze a document first.",
+						);
 					}
 
 					contextPanelScope.textContent = scopeLabel || "";
@@ -1764,6 +1913,7 @@
 						case "showAnalyzedContext":
 							showContextPanel({
 								contextText: message.contextText,
+								statements: message.statements,
 								chips: message.chips,
 								scopeLabel: message.scopeLabel,
 								emptyReason: message.emptyReason,

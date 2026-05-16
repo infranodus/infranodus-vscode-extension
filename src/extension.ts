@@ -1321,12 +1321,15 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							allTopicNames.map((t) => [String(t.id), t.name]),
 						);
 
-						let contextText = fullContent;
+						// `statementsList` is what the webview renders as cards; when
+						// no concept/topic is selected we fall back to a single card
+						// holding the full analyzed content so the panel still works.
+						let statementsList: string[] = fullContent ? [fullContent] : [];
 						let scopeLabel = "All analyzed context";
 						let emptyReason = "";
 
 						if (selectedWords.length > 0) {
-							const filtered = statements
+							statementsList = statements
 								.filter((s: any) =>
 									selectedWords.some((w: string) =>
 										String(s?.content ?? "")
@@ -1334,10 +1337,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 											.includes(w.toLowerCase()),
 									),
 								)
-								.map((s: any) => s.content);
-							contextText = filtered.join("\n\n");
+								.map((s: any) => String(s.content));
 							scopeLabel = `Concepts: ${selectedWords.join(", ")}`;
-							if (!contextText) {
+							if (statementsList.length === 0) {
 								emptyReason = "No statements reference the selected concepts.";
 							}
 						} else if (selectedClusters.length > 0) {
@@ -1345,32 +1347,33 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 								(id) => topicNamesById.get(String(id)) || `Topic ${id}`,
 							);
 							if (actionMessage == "context_gap") {
-								const top = this.getTopStatementsOfTopics({
+								statementsList = this.getTopStatementsOfTopics({
 									statements,
 									selectedTopics: selectedClusters,
-								});
-								contextText = top.join("\n\n");
+								}).map(String);
 								scopeLabel = `Gap top statements: ${topicLabels.join(", ")}`;
-								if (!contextText) {
+								if (statementsList.length === 0) {
 									emptyReason =
 										"No top statements found for the selected topics.";
 								}
 							} else {
-								const all = this.getAllStatementsOfTopics({
+								statementsList = this.getAllStatementsOfTopics({
 									statements,
 									selectedTopics: selectedClusters,
-								});
-								contextText = all.join("\n\n");
+								}).map(String);
 								scopeLabel = `Topics: ${topicLabels.join(", ")}`;
-								if (!contextText) {
+								if (statementsList.length === 0) {
 									emptyReason = "No statements found in the selected topics.";
 								}
 							}
 						}
 
+						const contextText = statementsList.join("\n\n");
+
 						this._view?.webview.postMessage({
 							command: "showAnalyzedContext",
 							contextText,
+							statements: statementsList,
 							chips,
 							scopeLabel,
 							emptyReason,
@@ -1528,6 +1531,16 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						);
 					}
 					return;
+				case "findStatementInContext": {
+					const rawStatement = String(message.statement ?? "").trim();
+					if (!rawStatement) return;
+					await this.executeFileSearch({
+						searchPattern: this.generateSearchPatternFromArray([rawStatement]),
+						filesToInclude: this.generateCurrentUrl(),
+						triggerSearch: true,
+					});
+					return;
+				}
 				case "exportAnalyzedContextToInfraNodus":
 					if (!(await this.ensureCanExport())) {
 						return;
