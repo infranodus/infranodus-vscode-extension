@@ -14,6 +14,7 @@ interface CustomJwtPayload extends JwtPayload {
 type GraphAiAdviceRequestMode =
 	| "question"
 	| "develop"
+	| "transcend"
 	| "summary"
 	| "graph summary";
 
@@ -1771,6 +1772,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public generatePrefix(action: string): string {
+		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
+		// Develop honours the "Transcend" toggle: when on, the prompt shown in
+		// clipboard/webview/log advertises lateral exploration rather than
+		// in-discourse development. The Custom AI Prompt setting is ignored in
+		// this mode — the transcend phrasing is fixed.
+		if (action === "develop" && config.get<boolean>("useTranscendMode")) {
+			return "Find an idea that transcends the current graph structure and concepts and connects them to something new";
+		}
 		// The "Develop" and "Chat" prompts are user-configurable via settings.
 		const userConfigurable: Record<string, { key: string; fallback: string }> =
 			{
@@ -1787,9 +1796,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			};
 		const configurable = userConfigurable[action];
 		if (configurable) {
-			const fromConfig = vscode.workspace
-				.getConfiguration("infranodus-graph-view")
-				.get<string>(configurable.key);
+			const fromConfig = config.get<string>(configurable.key);
 			return fromConfig || configurable.fallback;
 		}
 		const builtIn: Record<string, string> = {
@@ -1823,9 +1830,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private getGraphAiAdviceRequestMode(
 		action: string,
 	): GraphAiAdviceRequestMode | undefined {
+		if (action === "develop") {
+			const useTranscend = vscode.workspace
+				.getConfiguration("infranodus-graph-view")
+				.get<boolean>("useTranscendMode");
+			return useTranscend ? "transcend" : "develop";
+		}
 		const requestModeMap: Record<string, GraphAiAdviceRequestMode> = {
 			question: "question",
-			develop: "develop",
 			summarize: "summary",
 			"graph summary": "graph summary",
 		};

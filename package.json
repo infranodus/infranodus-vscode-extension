@@ -2,7 +2,7 @@
 	"name": "infranodus-graph-view",
 	"displayName": "InfraNodus Graph View",
 	"description": "Knowledge graph for your text and code: visualize connections, find gaps, generate context-aware AI prompts.",
-	"version": "0.8.92",
+	"version": "0.9.0",
 	"author": "InfraNodus SAS",
 	"publisher": "infranodus",
 	"repository": {
@@ -150,6 +150,11 @@
 						"type": "string",
 						"default": "Generate an idea that uses the current context and the graph structure below:",
 						"description": "Prompt for AI: Develop Mode — the prompt used when you click the \"Develop\" button to generate new ideas grounded in the current graph."
+					},
+					"infranodus-graph-view.useTranscendMode": {
+						"type": "boolean",
+						"default": false,
+						"description": "Use \"Transcend\" mode for the AI: Develop action. When enabled, clicking the \"Develop\" button asks the AI to look beyond the current discourse — surfacing ideas that connect your existing graph to concepts outside of it, rather than developing what's already there. Useful for lateral, outside-the-box exploration and cross-domain bridging. When disabled, Develop stays grounded in the current graph and uses the Custom AI Prompt above."
 					},
 					"infranodus-graph-view.customAIChatPrompt": {
 						"type": "string",
