@@ -146,35 +146,15 @@
 				"title": "InfraNodus: AI Assistant",
 				"order": 3,
 				"properties": {
-					"infranodus-graph-view.graphPrefix": {
-						"type": "string",
-						"default": "Use the following knowledge graph data to make your response more precise",
-						"description": "Prefix prepended to the graph data when you copy the graph structure to the clipboard for use in an external AI chat."
-					},
-					"infranodus-graph-view.promptQuestion": {
-						"type": "string",
-						"default": "Generate a question that uses the current context and the graph structure below:",
-						"description": "Prompt sent to the AI when you click the \"Question\" button — designed to surface a question grounded in the current graph."
-					},
-					"infranodus-graph-view.promptIdea": {
+					"infranodus-graph-view.customAIPrompt": {
 						"type": "string",
 						"default": "Generate an idea that uses the current context and the graph structure below:",
-						"description": "Prompt sent to the AI when you click the \"Idea\" button — used to generate new ideas from the current graph."
+						"description": "Prompt for AI: Develop Mode — the prompt used when you click the \"Develop\" button to generate new ideas grounded in the current graph."
 					},
-					"infranodus-graph-view.promptSummary": {
+					"infranodus-graph-view.customAIChatPrompt": {
 						"type": "string",
-						"default": "Summarize the content using the current context and the graph structure below:",
-						"description": "Prompt sent to the AI when you click the \"Summary\" button — produces a summary of the analyzed content informed by the graph."
-					},
-					"infranodus-graph-view.promptContext": {
-						"type": "string",
-						"default": "Retrieve the most relevant content from the current context that relates to the graph structure below:",
-						"description": "Prompt sent to the AI when you click the \"Context\" button — pulls the most relevant passages from the analyzed content for a given graph selection."
-					},
-					"infranodus-graph-view.promptContextGap": {
-						"type": "string",
-						"default": "Find the gap in the current context that would bridge the graph structure below:",
-						"description": "Prompt sent to the AI when you click the \"Bridge Context Gap\" button — suggests what's missing between disconnected parts of the graph."
+						"default": "Use the graph and context below to start a discussion. Answer follow-up questions referring to the graph structure when relevant.",
+						"description": "Prompt for AI: Chat Mode — the prompt used when you click the \"Chat\" button to start a discussion grounded in the current graph and context."
 					}
 				}
 			},

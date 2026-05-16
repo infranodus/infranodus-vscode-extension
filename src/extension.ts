@@ -1475,8 +1475,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							// explicit cluster selection, or the whole-graph
 							// "graph summary" action which targets all topics.
 							let contentWithPrefix = `${prefix}\n\n${graphToUse}`;
+							let contentForBackend = graphToUse;
 							if (contentToUse) {
-								contentWithPrefix += `\n\nAnd take this context into account:\n\n${contentToUse}`;
+								const contextBlock = `\n\nAnd take this context into account:\n\n${contentToUse}`;
+								contentWithPrefix += contextBlock;
+								contentForBackend += contextBlock;
 							}
 							vscode.env.clipboard.writeText(contentWithPrefix);
 
@@ -1508,7 +1511,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 									action: actionMessage,
 									adviceRequestId,
 									requestMode,
-									prompt: contentWithPrefix,
+									prompt: contentForBackend,
 									promptContext: contentToUse,
 									pinnedNodes: selectedWords,
 									topicsToProcess: selectedClusters,
@@ -1645,9 +1648,8 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "copyGraphToClipboard":
 					const graphContent = this._clipboardProvider.getCurrentGraph();
 					if (graphContent) {
-						const prefix = vscode.workspace
-							.getConfiguration("infranodus-graph-view")
-							.get("graphPrefix");
+						const prefix =
+							"Use the following knowledge graph data to make your response more precise";
 						const contentWithPrefix = `${prefix}\n\n${graphContent}`;
 						vscode.env.clipboard.writeText(contentWithPrefix);
 						vscode.window.showInformationMessage(
@@ -1769,28 +1771,40 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public generatePrefix(action: string): string {
-		const config = vscode.workspace.getConfiguration("infranodus-graph-view");
-		const settingsMap: Record<string, string> = {
-			question: "promptQuestion",
-			develop: "promptIdea",
-			summarize: "promptSummary",
-			"graph summary": "promptSummary",
-			chat: "promptChat",
-			context: "promptContext",
-			context_gap: "promptContextGap",
+		// The "Develop" and "Chat" prompts are user-configurable via settings.
+		const userConfigurable: Record<string, { key: string; fallback: string }> =
+			{
+				develop: {
+					key: "customAIPrompt",
+					fallback:
+						"Generate an idea that uses the current context and the graph structure below:",
+				},
+				chat: {
+					key: "customAIChatPrompt",
+					fallback:
+						"Use the graph and context below to start a discussion. Answer follow-up questions referring to the graph structure when relevant.",
+				},
+			};
+		const configurable = userConfigurable[action];
+		if (configurable) {
+			const fromConfig = vscode.workspace
+				.getConfiguration("infranodus-graph-view")
+				.get<string>(configurable.key);
+			return fromConfig || configurable.fallback;
+		}
+		const builtIn: Record<string, string> = {
+			question:
+				"Generate a question that uses the current context and the graph structure below:",
+			summarize:
+				"Summarize the content using the current context and the graph structure below:",
+			"graph summary":
+				"Summarize the content using the current context and the graph structure below:",
+			context:
+				"Retrieve the most relevant content from the current context that relates to the graph structure below:",
+			context_gap:
+				"Find the gap in the current context that would bridge the graph structure below:",
 		};
-		const settingKey = settingsMap[action];
-		if (settingKey) {
-			const fromConfig = config.get<string>(settingKey);
-			if (fromConfig) return fromConfig;
-		}
-		// Fallback prefix for chat — produces a prompt the user can paste into
-		// any external chat agent. No backend `requestMode` is registered for
-		// chat, so this path stops at clipboard + showPrompt.
-		if (action === "chat") {
-			return "Use the graph and context below to start a discussion. Answer follow-up questions referring to the graph structure when relevant.";
-		}
-		return "";
+		return builtIn[action] || "";
 	}
 
 	public getActionLabel(action: string): string {
