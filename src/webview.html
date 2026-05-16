@@ -1437,19 +1437,18 @@
 							'<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />' +
 							'<path d="M8 4h8" />' +
 							"</svg><span>Copy</span>";
-						copyBtn.addEventListener("click", async () => {
-							try {
-								await navigator.clipboard.writeText(text);
-								const label = copyBtn.querySelector("span");
-								if (label) label.textContent = "Copied";
-								copyBtn.classList.add("copied");
-								setTimeout(() => {
-									if (label) label.textContent = "Copy";
-									copyBtn.classList.remove("copied");
-								}, 1500);
-							} catch (err) {
-								console.error("Failed to copy statement:", err);
-							}
+						copyBtn.addEventListener("click", () => {
+							vscode.postMessage({
+								command: "copyStatementToClipboard",
+								text,
+							});
+							const label = copyBtn.querySelector("span");
+							if (label) label.textContent = "Copied";
+							copyBtn.classList.add("copied");
+							setTimeout(() => {
+								if (label) label.textContent = "Copy";
+								copyBtn.classList.remove("copied");
+							}, 1500);
 						});
 						actions.appendChild(copyBtn);
 

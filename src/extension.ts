@@ -1655,6 +1655,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						);
 					}
 					break;
+				case "copyStatementToClipboard":
+					vscode.env.clipboard.writeText(message.text || "");
+					break;
 			}
 		});
 	}
