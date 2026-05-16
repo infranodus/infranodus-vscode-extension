@@ -1780,6 +1780,16 @@
 							},
 						});
 					}
+
+					// The sandboxed iframe can't write to the clipboard, so the
+					// React app posts this command up to us — forward it to the
+					// extension host which uses vscode.env.clipboard.
+					if (message.command === "copyStatementToClipboard") {
+						vscode.postMessage({
+							command: "copyStatementToClipboard",
+							text: message.text || "",
+						});
+					}
 				});
 
 				// Add this to capture iframe's console logs
