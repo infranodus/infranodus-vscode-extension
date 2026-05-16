@@ -17,6 +17,37 @@ type GraphAiAdviceRequestMode =
 	| "summary"
 	| "graph summary";
 
+/**
+ * Strip a leading "N. " numbering prefix from an AI-generated topic name
+ * (e.g. "1. Climate change" → "Climate change"). If the value has no such
+ * prefix, return it unchanged. Non-string / empty inputs pass through.
+ */
+function cleanAiTopicName(name: unknown): string {
+	if (typeof name !== "string") return name == null ? "" : String(name);
+	return name.replace(/^\s*\d+\.\s+/, "").trim() || name;
+}
+
+/**
+ * Build an error message for a non-2xx InfraNodus API response that includes
+ * the response body (when present) — otherwise the body is silently lost and
+ * the user only sees "API request failed: 500".
+ */
+function formatNon200Error(
+	endpoint: string,
+	response: { status: number; statusText?: string; data?: unknown },
+): string {
+	const bodyText =
+		typeof response.data === "string"
+			? response.data
+			: response.data
+				? (getResponseErrorMessage(response.data) ??
+					JSON.stringify(response.data))
+				: "";
+	const statusText = response.statusText ? ` ${response.statusText}` : "";
+	const suffix = bodyText ? `: ${bodyText}` : "";
+	return `InfraNodus API request to ${endpoint} failed with ${response.status}${statusText}${suffix}`;
+}
+
 function getResponseErrorMessage(data: unknown): string | undefined {
 	if (!data) {
 		return undefined;
@@ -996,22 +1027,31 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		// Subscribe to topics updates
 		this.topicsSubject.subscribe((data) => {
 			console.log("Received topics:", data);
-			const topicNames =
-				data.entriesAndGraphOfContext?.graph?.graphologyGraph?.attributes?.top_clusters.map(
-					(topic: any) => {
-						if (topic.aiName) {
-							const topicName = topic.aiName.split(". ").pop();
-							return { id: topic.community, name: topicName };
-						}
-						return {
-							id: topic.community,
-							name: topic.nodes
-								.map((node: any) => node.nodeName)
-								.slice(0, 3)
-								.join(" "),
-						};
-					},
-				);
+			const rawTopClusters: any[] =
+				data.entriesAndGraphOfContext?.graph?.graphologyGraph?.attributes
+					?.top_clusters;
+			// Strip the leading "N. " numbering the AI sometimes prepends to
+			// topic names. Mutate in place so the iframe (which reads aiName
+			// straight from the forwarded payload) also renders clean labels.
+			if (Array.isArray(rawTopClusters)) {
+				rawTopClusters.forEach((topic: any) => {
+					if (topic && typeof topic.aiName === "string") {
+						topic.aiName = cleanAiTopicName(topic.aiName);
+					}
+				});
+			}
+			const topicNames = rawTopClusters?.map((topic: any) => {
+				if (topic.aiName) {
+					return { id: topic.community, name: topic.aiName };
+				}
+				return {
+					id: topic.community,
+					name: topic.nodes
+						.map((node: any) => node.nodeName)
+						.slice(0, 3)
+						.join(" "),
+				};
+			});
 
 			data.topicNames = topicNames || [];
 			// If we have a webview, send the data to it
@@ -1826,7 +1866,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			);
 
 			if (response.status !== 200) {
-				throw new Error(`InfraNodus API request failed: ${response.status}`);
+				throw new Error(formatNon200Error("graphAiAdvice", response));
 			}
 
 			if (response.data?.error) {
@@ -1856,7 +1896,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				error: message,
 			});
 			if (isInfraNodusAuthError(error)) {
-				this.notifyApiKeyNeeded();
+				this.notifyApiKeyNeeded(message);
 			} else {
 				vscode.window.showWarningMessage(
 					`Could not generate InfraNodus AI advice: ${message}`,
@@ -1938,15 +1978,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	 * allowance is exhausted, the key is invalid, or it has expired. Show a
 	 * popup with quick actions to get/update the key.
 	 */
-	private notifyApiKeyNeeded() {
+	private notifyApiKeyNeeded(serverMessage?: string) {
 		const openSettings = "Open Settings";
 		const getKey = "Get an API Key";
+		const fallback =
+			"InfraNodus needs an API key for this request — your free allowance may be exhausted or the existing key is no longer valid. Get a key at https://infranodus.com/api-access and add it in the extension's settings.";
+		const message =
+			serverMessage && serverMessage.trim().length > 0
+				? serverMessage
+				: fallback;
 		vscode.window
-			.showInformationMessage(
-				"InfraNodus needs an API key for this request — your free allowance may be exhausted or the existing key is no longer valid. Get a key at https://infranodus.com/api-access and add it in the extension's settings.",
-				getKey,
-				openSettings,
-			)
+			.showInformationMessage(message, getKey, openSettings)
 			.then((choice) => {
 				if (choice === openSettings) {
 					vscode.commands.executeCommand(
@@ -2088,7 +2130,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			);
 
 			if (response.status !== 200) {
-				throw new Error(`InfraNodus API request failed: ${response.status}`);
+				throw new Error(
+					formatNon200Error("graphAndStatements (export)", response),
+				);
 			}
 
 			if (response.data?.error) {
@@ -2115,7 +2159,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			const message = getInfraNodusRequestErrorMessage(error);
 			logInfraNodusRequestError(error);
 			if (isInfraNodusAuthError(error)) {
-				this.notifyApiKeyNeeded();
+				this.notifyApiKeyNeeded(message);
 			} else {
 				vscode.window.showErrorMessage(
 					`Could not export context to InfraNodus: ${message}`,
@@ -2356,7 +2400,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			);
 
 			if (response.status !== 200) {
-				throw new Error(`InfraNodus API request failed: ${response.status}`);
+				throw new Error(
+					formatNon200Error("graphAndStatements", response),
+				);
 			}
 
 			if (response.data.error) {
@@ -2365,7 +2411,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						? response.data.error
 						: JSON.stringify(response.data.error);
 				if (isInfraNodusAuthError(errorText)) {
-					this.notifyApiKeyNeeded();
+					this.notifyApiKeyNeeded(errorText);
 					return;
 				}
 				console.warn(
@@ -2461,7 +2507,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			const message = getInfraNodusRequestErrorMessage(error);
 			logInfraNodusRequestError(error);
 			if (isInfraNodusAuthError(error)) {
-				this.notifyApiKeyNeeded();
+				this.notifyApiKeyNeeded(message);
 			} else {
 				vscode.window.showErrorMessage(
 					`Error processing the document: ${message}`,
@@ -2570,7 +2616,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			);
 
 			if (response.status !== 200) {
-				throw new Error(`InfraNodus API request failed: ${response.status}`);
+				throw new Error(
+					formatNon200Error("graphAndStatements (process)", response),
+				);
 			}
 
 			if (response.data.error) {
@@ -2579,7 +2627,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						? response.data.error
 						: JSON.stringify(response.data.error);
 				if (isInfraNodusAuthError(errorText)) {
-					this.notifyApiKeyNeeded();
+					this.notifyApiKeyNeeded(errorText);
 					if (this._view) {
 						this._view.webview.postMessage({ type: "PROCESSING_COMPLETE" });
 					}
@@ -2676,7 +2724,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				});
 			}
 			if (isInfraNodusAuthError(error)) {
-				this.notifyApiKeyNeeded();
+				this.notifyApiKeyNeeded(message);
 			} else {
 				vscode.window.showErrorMessage(
 					"Error processing content: " + message,
@@ -3315,7 +3363,7 @@ class ClipboardViewProvider implements vscode.WebviewViewProvider {
 		return topClusters
 			.map((topic: any) => {
 				if (topic?.aiName) {
-					const name = String(topic.aiName).split(". ").pop() || topic.aiName;
+					const name = cleanAiTopicName(topic.aiName);
 					return { id: String(topic.community), name };
 				}
 				const fallback = (topic?.nodes || [])
