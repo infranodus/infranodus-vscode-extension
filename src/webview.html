@@ -1063,8 +1063,13 @@
 				applyTheme("light");
 			}
 
-			console.log("Activated InfraNodus Webview iFrame");
+			console.log("[InfraNodus][webview] script loaded", {
+				vscodeApi: typeof vscode,
+				userAgent: navigator.userAgent,
+				location: String(window.location.href),
+			});
 			document.addEventListener("DOMContentLoaded", (event) => {
+				console.log("[InfraNodus][webview] DOMContentLoaded");
 				// Set up button click handlers
 				document
 					.getElementById("analyzeButton")
@@ -1721,10 +1726,31 @@
 				window.addEventListener("message", (event) => {
 					const message = event.data;
 
-					// Log all messages from iframe
-					// console.log('Message from iframe for webview:', message);
+					// Log all messages from iframe / extension
+					try {
+						console.log("[InfraNodus][webview] received message", {
+							origin: event.origin,
+							type: message && message.type,
+							command: message && message.command,
+							hasPayload: !!(message && message.payload),
+							payloadKeys:
+								message && message.payload && typeof message.payload === "object"
+									? Object.keys(message.payload).slice(0, 20)
+									: undefined,
+						});
+					} catch (_) {}
 
 					if (message.type === "LOAD_JSON") {
+						console.log(
+							"[InfraNodus][webview] LOAD_JSON (handler #1) → forwarding to iframe",
+							{
+								hasError: !!(message.payload && message.payload.error),
+								payloadKeys:
+									message.payload && typeof message.payload === "object"
+										? Object.keys(message.payload)
+										: [],
+							},
+						);
 						if (message.payload && message.payload.error) {
 							vscode.postMessage({
 								command: "showError",
@@ -1770,6 +1796,17 @@
 						});
 					}
 
+					if (message.type === "UPDATE_REMOVED_NODES") {
+						console.log(
+							"[InfraNodus][webview] UPDATE_REMOVED_NODES from iframe → extension",
+							{ count: Array.isArray(message.payload) ? message.payload.length : 0 },
+						);
+						vscode.postMessage({
+							command: "updateRemovedNodes",
+							payload: message.payload,
+						});
+					}
+
 					if (message.type === "EXTERNAL_ACTION") {
 						vscode.postMessage({
 							command: "processExternalAction",
@@ -1794,7 +1831,13 @@
 
 				// Add this to capture iframe's console logs
 				const iframe = document.getElementById("graphFrame");
+				iframe.addEventListener("error", (err) => {
+					console.error("[InfraNodus][webview] iframe error event", err);
+				});
 				iframe.onload = () => {
+					console.log("[InfraNodus][webview] iframe onload", {
+						src: iframe.src,
+					});
 					// Inject console logger into iframe
 					iframe.contentWindow?.postMessage(
 						{
@@ -1871,6 +1914,12 @@
 							"&theme=" +
 							theme +
 							(message.userId ? "&user=" + message.userId : "");
+						console.log("[InfraNodus][webview] SET_IFRAME_URL → setting iframe.src", {
+							baseUrl: message.url,
+							iframeUrl,
+							theme,
+							hasUserId: !!message.userId,
+						});
 						// Store the URL and theme using vscode state
 						vscode.setState({
 							infraNodusIframeUrl: iframeUrl,
@@ -1883,6 +1932,15 @@
 				// Handle messages from the extension
 				window.addEventListener("message", (event) => {
 					const message = event.data;
+					if (message && message.command) {
+						console.log(
+							"[InfraNodus][webview] command from extension",
+							{
+								command: message.command,
+								keys: Object.keys(message).filter((k) => k !== "command"),
+							},
+						);
+					}
 					switch (message.command) {
 						case "setContent":
 							document.getElementById("graphFrame").src = message.url;
@@ -1965,7 +2023,13 @@
 
 			// Restore iframe URL and graph data from vscode state on page load
 			const state = vscode.getState();
-			// console.log("Initial state:", state);
+			console.log("[InfraNodus][webview] restoring vscode.state on load", {
+				hasState: !!state,
+				hasStoredIframeUrl: !!(state && state.infraNodusIframeUrl),
+				storedIframeUrl: state?.infraNodusIframeUrl,
+				hasStoredGraphData: !!(state && state.graphData),
+				storedTheme: state?.infraNodusTheme,
+			});
 			const storedIframeUrl = state?.infraNodusIframeUrl;
 			const storedGraphData = state?.graphData;
 			const storedTheme = state?.infraNodusTheme;
@@ -1976,15 +2040,21 @@
 			}
 
 			if (storedIframeUrl) {
-				// console.log("Setting iframe URL:", storedIframeUrl);
+				console.log("[InfraNodus][webview] restoring iframe.src from state", storedIframeUrl);
 				document.getElementById("graphFrame").src = storedIframeUrl;
 			}
 
 			// Function to send graph data to iframe
 			function sendGraphDataToIframe() {
-				if (hasRestoredData || !storedGraphData) return;
+				if (hasRestoredData || !storedGraphData) {
+					console.log("[InfraNodus][webview] sendGraphDataToIframe skipped", {
+						hasRestoredData,
+						hasStoredGraphData: !!storedGraphData,
+					});
+					return;
+				}
 
-				// console.log("Sending graph data to iframe:", storedGraphData);
+				console.log("[InfraNodus][webview] sending stored graphData to iframe (LOAD_JSON)");
 				const iframe = document.getElementById("graphFrame");
 				if (iframe && iframe.contentWindow) {
 					// Try both message types to see which one works
@@ -2000,7 +2070,6 @@
 						command: "refreshGraphStats",
 						type: "REFRESH_GRAPH",
 					});
-					// console.log("Sent LOAD_JSON message to iframe");
 
 					// Also try UPDATE_GRAPH as backup
 					// TODO use if there's a problem with webview reload
@@ -2019,39 +2088,43 @@
 			window.addEventListener("message", (event) => {
 				const message = event.data;
 
-				// Log all messages from iframe with their full content
-				// console.log('Webview received message:', {
-				//     type: message.type,
-				//     payload: message.payload,
-				//     fullMessage: message
-				// });
+				if (message && message.type) {
+					console.log("[InfraNodus][webview] outer message handler", {
+						origin: event.origin,
+						type: message.type,
+					});
+				}
 
 				// Listen for READY message from iframe
 				if (message.type === "READY") {
-					// console.log('Iframe is ready, sending stored data');
+					console.log("[InfraNodus][webview] iframe → READY, will replay stored graphData if any");
 					sendGraphDataToIframe();
 				}
 
 				switch (message.type) {
 					case "PROCESSING_START":
-						// Update UI to show processing state
+						console.log("[InfraNodus][webview] PROCESSING_START");
 						document.getElementById("graphFrame").style.opacity = "0.5";
 						break;
 
 					case "PROCESSING_COMPLETE":
-						// Restore UI
+						console.log("[InfraNodus][webview] PROCESSING_COMPLETE");
 						document.getElementById("graphFrame").style.opacity = "1";
 						break;
 
 					case "PROCESSING_ERROR":
-						// Handle error state
 						document.getElementById("graphFrame").style.opacity = "1";
-						console.error("Processing error:", message.error);
+						console.error("[InfraNodus][webview] PROCESSING_ERROR", message.error);
 						break;
 
 					case "LOAD_JSON":
-						// Update the iframe with new data and persist it
-						// console.log("LOAD_JSON EVENT received with payload:", message.payload)
+						console.log("[InfraNodus][webview] LOAD_JSON (handler #2) → forwarding to iframe", {
+							hasPayload: !!message.payload,
+							payloadKeys:
+								message.payload && typeof message.payload === "object"
+									? Object.keys(message.payload)
+									: [],
+						});
 						const iframe = document.getElementById("graphFrame");
 						if (iframe && iframe.contentWindow) {
 							// Store the data in vscode state
@@ -2060,21 +2133,63 @@
 								...currentState,
 								graphData: message.payload,
 							});
-							// console.log("Updated state with new graph data:", message.payload);
 
 							iframe.contentWindow.postMessage(
 								{
-									type: "LOAD_JSON", // Changed to match the original type
+									type: "LOAD_JSON",
 									payload: message.payload,
 								},
 								"*",
 							);
-							// console.log("Forwarded LOAD_JSON to iframe");
 
 							vscode.postMessage({
 								command: "refreshGraphStats",
 								type: "REFRESH_GRAPH",
 							});
+						} else {
+							console.warn("[InfraNodus][webview] LOAD_JSON: iframe or contentWindow missing", {
+								hasIframe: !!iframe,
+								hasContentWindow: !!(iframe && iframe.contentWindow),
+							});
+						}
+						break;
+					case "RECALCULATION":
+						console.log(
+							"[InfraNodus][webview] RECALCULATION → forwarding to iframe (preserves local state)",
+							{
+								hasPayload: !!message.payload,
+								payloadKeys:
+									message.payload && typeof message.payload === "object"
+										? Object.keys(message.payload)
+										: [],
+							},
+						);
+						const recalcIframe = document.getElementById("graphFrame");
+						if (recalcIframe && recalcIframe.contentWindow) {
+							// Update stored graphData so a future webview reload
+							// restores the latest (post-recalculation) graph.
+							const currentRecalcState = vscode.getState() || {};
+							vscode.setState({
+								...currentRecalcState,
+								graphData: message.payload,
+							});
+
+							recalcIframe.contentWindow.postMessage(
+								{
+									type: "RECALCULATION",
+									payload: message.payload,
+								},
+								"*",
+							);
+
+							vscode.postMessage({
+								command: "refreshGraphStats",
+								type: "REFRESH_GRAPH",
+							});
+						} else {
+							console.warn(
+								"[InfraNodus][webview] RECALCULATION: iframe or contentWindow missing",
+							);
 						}
 						break;
 				}

@@ -975,6 +975,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _lastFilesToInclude: string = "";
 	private _symbolTable: CodeSymbolTable = new Map();
 	private _currentMode: CodeGraphMode = "text";
+	private _wordsToHide: string[] = [];
+	private _lastProcessedKey: string = "";
+	private _initialLoadDoneForKey: string | null = null;
 	private _codeGraphBuilder = new CodeGraphBuilder((msg) =>
 		console.log("[InfraNodus CodeGraph]", msg),
 	);
@@ -1010,6 +1013,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		context: vscode.WebviewViewResolveContext,
 		_token: vscode.CancellationToken,
 	) {
+		console.log("[InfraNodus][ext] resolveWebviewView called", {
+			viewType: webviewView.viewType,
+			visible: webviewView.visible,
+		});
 		this._view = webviewView;
 
 		webviewView.webview.options = {
@@ -1018,6 +1025,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		};
 
 		webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
+		console.log("[InfraNodus][ext] webview HTML set", {
+			htmlLength: webviewView.webview.html.length,
+			cspSource: webviewView.webview.cspSource,
+		});
 
 		// Initialize the webview with the iframe URL
 		this.initializeWebview();
@@ -1027,7 +1038,15 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 		// Subscribe to topics updates
 		this.topicsSubject.subscribe((data) => {
-			console.log("Received topics:", data);
+			console.log("[InfraNodus][ext] topicsSubject next → will post LOAD_JSON to webview", {
+				hasEntries: !!data?.entriesAndGraphOfContext,
+				hasGraph: !!data?.entriesAndGraphOfContext?.graph,
+				topClustersCount:
+					data?.entriesAndGraphOfContext?.graph?.graphologyGraph?.attributes
+						?.top_clusters?.length,
+				nodeCount:
+					data?.entriesAndGraphOfContext?.graph?.graphologyGraph?.nodes?.length,
+			});
 			const rawTopClusters: any[] =
 				data.entriesAndGraphOfContext?.graph?.graphologyGraph?.attributes
 					?.top_clusters;
@@ -1058,17 +1077,43 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			// If we have a webview, send the data to it
 
 			if (this._view) {
-				this._view.webview.postMessage({
-					type: "LOAD_JSON",
-					payload: data,
-				});
+				const isInitialLoad =
+					this._initialLoadDoneForKey !== this._lastProcessedKey;
+				if (isInitialLoad) {
+					console.log(
+						"[InfraNodus][ext] webview.postMessage LOAD_JSON (initial load for key)",
+						{ key: this._lastProcessedKey },
+					);
+					this._view.webview.postMessage({
+						type: "LOAD_JSON",
+						payload: data,
+					});
+					this._initialLoadDoneForKey = this._lastProcessedKey;
+				} else {
+					console.log(
+						"[InfraNodus][ext] webview.postMessage RECALCULATION (subsequent update)",
+						{ key: this._lastProcessedKey, wordsToHide: this._wordsToHide },
+					);
+					this._view.webview.postMessage({
+						type: "RECALCULATION",
+						payload: {
+							entriesAndGraphOfContext: data.entriesAndGraphOfContext,
+						},
+					});
+				}
+			} else {
+				console.warn("[InfraNodus][ext] topicsSubject fired but this._view is missing");
 			}
 		});
 
 		webviewView.webview.onDidReceiveMessage(async (message) => {
 			console.log(
-				"Extension [InfraNodusViewProvider] received message:",
-				message,
+				"[InfraNodus][ext] webview → extension message:",
+				{
+					command: message?.command,
+					type: message?.type,
+					keys: message ? Object.keys(message) : [],
+				},
 			);
 			switch (message.command) {
 				case "showError":
@@ -1077,6 +1122,27 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				case "reload":
 					await this.processDocument();
 					return;
+				case "updateRemovedNodes": {
+					const incoming = Array.isArray(message.payload)
+						? message.payload.filter(
+								(w: unknown): w is string => typeof w === "string",
+							)
+						: [];
+					const next = Array.from(new Set(incoming));
+					const changed =
+						next.length !== this._wordsToHide.length ||
+						next.some((w) => !this._wordsToHide.includes(w));
+					console.log("[InfraNodus][ext] updateRemovedNodes", {
+						incoming: next,
+						previous: this._wordsToHide,
+						changed,
+					});
+					if (changed) {
+						this._wordsToHide = next;
+						await this.processDocument();
+					}
+					return;
+				}
 				case "setApiKey":
 					vscode.commands.executeCommand("infranodus-graph-view.setApiKey");
 					return;
@@ -1885,8 +1951,18 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		const formattedApiKey = this.formatAuthHeader(apiKey);
 
 		try {
+			const aiAdviceUrl = `${this.getServerUrl()}/api/v1/graphAiAdvice`;
+			console.log("[InfraNodus][ext] POST →", aiAdviceUrl, {
+				action,
+				requestMode,
+				modelToUse: this.getModelToUse(),
+				promptLength: prompt?.length || 0,
+				pinnedNodesCount: pinnedNodes?.length || 0,
+				topicsToProcessCount: topicsToProcess?.length || 0,
+				hasAuth: !!formattedApiKey,
+			});
 			const response = await axios.post(
-				`${this.getServerUrl()}/api/v1/graphAiAdvice`,
+				aiAdviceUrl,
 				{
 					prompt,
 					userPrompt: prompt ? [{ role: "user", content: prompt }] : [],
@@ -1906,6 +1982,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					},
 				},
 			);
+			console.log("[InfraNodus][ext] POST ← graphAiAdvice", {
+				status: response.status,
+				hasError: !!response.data?.error,
+				responseKeys: response.data ? Object.keys(response.data) : [],
+			});
 
 			if (response.status !== 200) {
 				throw new Error(formatNon200Error("graphAiAdvice", response));
@@ -2146,22 +2227,35 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		const apiKey = await this.getApiKey();
 		const formattedApiKey = this.formatAuthHeader(apiKey);
 
+		const exportStopwords = Array.from(
+			new Set([...this.getInfraNodusStopwords(), ...this._wordsToHide]),
+		);
+		const exportContextSettings: Record<string, any> = {
+			partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
+			doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+			mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+		};
+		if (exportStopwords.length > 0) {
+			exportContextSettings.stopwords = exportStopwords;
+			exportContextSettings.lemmatizeHashtags = true;
+		}
 		const textRequest = {
 			name,
 			text,
 			aiTopics: true,
-			stopwords: this.getInfraNodusStopwords(),
-			contextSettings: {
-				partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
-				doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
-				mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
-			},
+			contextSettings: exportContextSettings,
 		};
 
 		try {
 			this._view?.webview.postMessage({ command: "showLoading" });
+			const exportUrl = `${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(name)}`;
+			console.log("[InfraNodus][ext] POST →", exportUrl, {
+				name,
+				textLength: text?.length || 0,
+				hasAuth: !!formattedApiKey,
+			});
 			const response = await axios.post(
-				`${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(name)}`,
+				exportUrl,
 				textRequest,
 				{
 					headers: {
@@ -2170,6 +2264,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					},
 				},
 			);
+			console.log("[InfraNodus][ext] POST ← graphAndStatements (export)", {
+				status: response.status,
+				hasError: !!response.data?.error,
+			});
 
 			if (response.status !== 200) {
 				throw new Error(
@@ -2344,30 +2442,43 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	private _buildRequestBody(name: string, text: string) {
+		const hidden = this._wordsToHide;
 		if (this._currentMode === "code") {
+			const contextSettings: Record<string, any> = {
+				partOfSpeechToProcess: "HASHTAGS_AND_WORDS",
+				language: "ZZ",
+				doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+				mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+			};
+			const codeStopwords = Array.from(new Set(hidden));
+			if (codeStopwords.length > 0) {
+				contextSettings.stopwords = codeStopwords;
+				contextSettings.lemmatizeHashtags = true;
+			}
 			return {
 				name,
 				text,
 				aiTopics: true,
-				stopwords: [] as string[],
-				contextSettings: {
-					partOfSpeechToProcess: "HASHTAGS_AND_WORDS",
-					language: "ZZ",
-					doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
-					mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
-				},
+				contextSettings,
 			};
+		}
+		const merged = Array.from(
+			new Set([...this.getInfraNodusStopwords(), ...hidden]),
+		);
+		const contextSettings: Record<string, any> = {
+			partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
+			doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
+			mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
+		};
+		if (merged.length > 0) {
+			contextSettings.stopwords = merged;
+			contextSettings.lemmatizeHashtags = true;
 		}
 		return {
 			name,
 			text,
 			aiTopics: true,
-			stopwords: this.getInfraNodusStopwords(),
-			contextSettings: {
-				partOfSpeechToProcess: this.getPartOfSpeechToProcess(),
-				doubleSquarebracketsProcessing: "PROCESS_AS_HASHTAGS",
-				mentionsProcessing: "CONNECT_TO_ALL_CONCEPTS",
-			},
+			contextSettings,
 		};
 	}
 
@@ -2387,6 +2498,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			// the graph the user is currently looking at. AUTO resolves based on
 			// the document's file extension here.
 			this._resetCodeGraphState(documentToProcess.fileName);
+
+			const docKey = `doc:${documentToProcess.uri.toString()}`;
+			if (docKey !== this._lastProcessedKey) {
+				this._wordsToHide = [];
+				this._lastProcessedKey = docKey;
+				this._initialLoadDoneForKey = null;
+			}
 
 			const text = documentToProcess.getText();
 
@@ -2430,8 +2548,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 			const formattedApiKey = this.formatAuthHeader(apiKey);
 
+			const processDocUrl = `${this.getServerUrl()}/api/v1/graphAndStatements?donotsave=true&addStats=true&dotGraph=true&optimize=develop`;
+			console.log("[InfraNodus][ext] POST → (processDocument)", processDocUrl, {
+				fileName: documentToProcess.fileName,
+				mode: this._currentMode,
+				textToProcessLength: textToProcess?.length || 0,
+				hasAuth: !!formattedApiKey,
+				wordsToHide: this._wordsToHide,
+				stopwordsSent: (textRequest as any)?.contextSettings?.stopwords,
+			});
 			const response = await axios.post(
-				`${this.getServerUrl()}/api/v1/graphAndStatements?donotsave=true&addStats=true&dotGraph=true&optimize=develop`,
+				processDocUrl,
 				textRequest,
 				{
 					headers: {
@@ -2440,6 +2567,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					},
 				},
 			);
+			console.log("[InfraNodus][ext] POST ← graphAndStatements (processDocument)", {
+				status: response.status,
+				hasError: !!response.data?.error,
+				hasEntries: !!response.data?.entriesAndGraphOfContext,
+				hasGraph: !!response.data?.entriesAndGraphOfContext?.graph,
+				responseKeys: response.data ? Object.keys(response.data) : [],
+			});
 
 			if (response.status !== 200) {
 				throw new Error(
@@ -2639,6 +2773,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				this.notifyNoApiKey();
 			}
 
+			const contentKey = `content:${name}`;
+			if (contentKey !== this._lastProcessedKey) {
+				this._wordsToHide = [];
+				this._lastProcessedKey = contentKey;
+				this._initialLoadDoneForKey = null;
+			}
+
 			const textRequest = this._buildRequestBody(name, content);
 
 			const formattedApiKey = this.formatAuthHeader(apiKey);
@@ -2646,8 +2787,16 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			// Notify webview that processing is starting
 			this._view.webview.postMessage({ type: "PROCESSING_START" });
 
+			const processContentUrl = `${this.getServerUrl()}/api/v1/graphAndStatements?donotsave=true&addStats=true&dotGraph=true&optimize=develop`;
+			console.log("[InfraNodus][ext] POST → (processContent)", processContentUrl, {
+				name,
+				contentLength: content?.length || 0,
+				hasAuth: !!formattedApiKey,
+				wordsToHide: this._wordsToHide,
+				stopwordsSent: (textRequest as any)?.contextSettings?.stopwords,
+			});
 			const response = await axios.post(
-				`${this.getServerUrl()}/api/v1/graphAndStatements?donotsave=true&addStats=true&dotGraph=true&optimize=develop`,
+				processContentUrl,
 				textRequest,
 				{
 					headers: {
@@ -2656,6 +2805,11 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					},
 				},
 			);
+			console.log("[InfraNodus][ext] POST ← graphAndStatements (processContent)", {
+				status: response.status,
+				hasError: !!response.data?.error,
+				hasGraph: !!response.data?.entriesAndGraphOfContext?.graph,
+			});
 
 			if (response.status !== 200) {
 				throw new Error(
@@ -3143,6 +3297,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 	private async initializeWebview() {
 		if (!this._view) {
+			console.warn("[InfraNodus][ext] initializeWebview called but this._view is missing");
 			return;
 		}
 
@@ -3155,18 +3310,30 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					jwtDecode<CustomJwtPayload>(apiKey);
 				currentUser = decodedToken.user?.id || "";
 			} catch (error) {
-				console.error("Error decoding JWT:", error);
+				console.error("[InfraNodus][ext] Error decoding JWT:", error);
 			}
 		}
 
 		const iframeUrl = this.getIframeUrl();
 		const theme = this.getResolvedTheme();
+		console.log("[InfraNodus][ext] initializeWebview", {
+			iframeUrl,
+			serverUrl: this.getServerUrl(),
+			hasApiKey: !!apiKey,
+			currentUser,
+			theme,
+		});
 		this._context.globalState.update("infraNodusIframeUrl", iframeUrl);
 		this._context.globalState.update("infraNodusUserId", currentUser);
 		this._context.globalState.update("infraNodusTheme", theme);
 
 		// Send the URL to the webview
 		if (this._view) {
+			console.log("[InfraNodus][ext] webview.postMessage SET_IFRAME_URL", {
+				url: iframeUrl,
+				userId: currentUser,
+				theme,
+			});
 			this._view.webview.postMessage({
 				type: "SET_IFRAME_URL",
 				url: iframeUrl,
