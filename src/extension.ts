@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import axios from "axios";
 import { jwtDecode, JwtPayload } from "jwt-decode";
-import { Subject } from "rxjs";
+import { Subject, Subscription } from "rxjs";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -976,6 +976,7 @@ class CodeGraphBuilder {
 class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private topicsSubject = new Subject<any>();
+	private _topicsSubscription?: Subscription;
 	private _lastSearchPattern: string = "";
 	private _lastFilesToInclude: string = "";
 	private _symbolTable: CodeSymbolTable = new Map();
@@ -1048,8 +1049,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		// Process the active document immediately when the view is resolved
 		this.processDocument();
 
-		// Subscribe to topics updates
-		this.topicsSubject.subscribe((data) => {
+		// Subscribe to topics updates. The view is re-resolved every time it
+		// becomes visible again (no retainContextWhenHidden), so drop the
+		// previous subscription first — otherwise they accumulate and each
+		// analysis result gets posted several times (the second copy going out
+		// as a spurious RECALCULATION).
+		this._topicsSubscription?.unsubscribe();
+		this._topicsSubscription = this.topicsSubject.subscribe((data) => {
 			console.log("[InfraNodus][ext] topicsSubject next → will post LOAD_JSON to webview", {
 				hasEntries: !!data?.entriesAndGraphOfContext,
 				hasGraph: !!data?.entriesAndGraphOfContext?.graph,
@@ -2638,6 +2644,18 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				responseKeys: response.data ? Object.keys(response.data) : [],
 			});
 
+			// A newer analysis was requested while this one was in flight (e.g.
+			// the auto-analyze of the still-active editor racing the explicit
+			// "Visualize as Graph" on another file). Displaying this response
+			// would replace the newer graph with an older one — drop it.
+			if (this._lastProcessedKey !== docKey) {
+				console.log(
+					"[InfraNodus][ext] discarding stale processDocument response",
+					{ requestedKey: docKey, currentKey: this._lastProcessedKey },
+				);
+				return;
+			}
+
 			if (response.status !== 200) {
 				throw new Error(
 					formatNon200Error("graphAndStatements", response),
@@ -2873,6 +2891,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				hasError: !!response.data?.error,
 				hasGraph: !!response.data?.entriesAndGraphOfContext?.graph,
 			});
+
+			// Same stale-response guard as processDocument: if another analysis
+			// superseded this one while the request was in flight, drop it. No
+			// PROCESSING_COMPLETE here — the newer request owns the loading state.
+			if (this._lastProcessedKey !== contentKey) {
+				console.log(
+					"[InfraNodus][ext] discarding stale processContent response",
+					{ requestedKey: contentKey, currentKey: this._lastProcessedKey },
+				);
+				return;
+			}
 
 			if (response.status !== 200) {
 				throw new Error(

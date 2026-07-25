@@ -1752,16 +1752,11 @@
 					} catch (_) {}
 
 					if (message.type === "LOAD_JSON") {
-						console.log(
-							"[InfraNodus][webview] LOAD_JSON (handler #1) → forwarding to iframe",
-							{
-								hasError: !!(message.payload && message.payload.error),
-								payloadKeys:
-									message.payload && typeof message.payload === "object"
-										? Object.keys(message.payload)
-										: [],
-							},
-						);
+						// Only the error case is handled here — the actual graph
+						// delivery lives in the main extension-message handler below,
+						// which reloads the iframe and replays on READY. Forwarding
+						// from here as well pushed a second LOAD_JSON into a live app,
+						// which does not reliably replace the previous graph.
 						if (message.payload && message.payload.error) {
 							vscode.postMessage({
 								command: "showError",
@@ -1769,17 +1764,6 @@
 							});
 							return;
 						}
-						// Store the data in vscode state
-						patchState({ graphData: message.payload });
-
-						// Forward the message to the iframe
-						document.getElementById("graphFrame").contentWindow.postMessage(
-							{
-								type: "LOAD_JSON",
-								payload: message.payload,
-							},
-							"*",
-						);
 					}
 
 					if (message.type === "UPDATE_SELECTED_NODES") {
@@ -1934,6 +1918,7 @@
 							infraNodusIframeUrl: iframeUrl,
 							infraNodusTheme: theme,
 						});
+						iframeReady = false; // navigating: wait for the new READY
 						document.getElementById("graphFrame").src = iframeUrl;
 					}
 				});
@@ -2040,9 +2025,21 @@
 				storedTheme: state?.infraNodusTheme,
 			});
 			const storedIframeUrl = state?.infraNodusIframeUrl;
-			const storedGraphData = state?.graphData;
 			const storedTheme = state?.infraNodusTheme;
-			let hasRestoredData = false; // Flag to prevent multiple restorations
+			// The newest graph we know about: starts as the persisted state and is
+			// overwritten by every incoming LOAD_JSON / RECALCULATION. The READY
+			// replay below must send THIS, never a load-time snapshot — replaying
+			// the snapshot showed the previous graph whenever the iframe finished
+			// booting after a new analysis had already arrived (the fresh LOAD_JSON
+			// forwarded to a not-yet-listening iframe is simply lost).
+			let latestGraphData = state?.graphData;
+			// True between the graph app's READY and the next iframe reload. Graphs
+			// are ONLY delivered to a freshly booted app (on READY): posting
+			// LOAD_JSON into an app that already renders a graph does not reliably
+			// replace it — the panel kept showing the previous graph. So a new
+			// LOAD_JSON while the app is live triggers an iframe reload instead,
+			// and the READY replay delivers latestGraphData to the clean instance.
+			let iframeReady = false;
 
 			if (storedTheme) {
 				applyTheme(storedTheme);
@@ -2053,24 +2050,22 @@
 				document.getElementById("graphFrame").src = storedIframeUrl;
 			}
 
-			// Function to send graph data to iframe
+			// Send the newest known graph to the iframe. Called on every READY the
+			// iframe emits (initial boot and any src change), so it must always be
+			// safe to re-run and must always send latestGraphData.
 			function sendGraphDataToIframe() {
-				if (hasRestoredData || !storedGraphData) {
-					console.log("[InfraNodus][webview] sendGraphDataToIframe skipped", {
-						hasRestoredData,
-						hasStoredGraphData: !!storedGraphData,
-					});
+				if (!latestGraphData) {
+					console.log("[InfraNodus][webview] sendGraphDataToIframe skipped (no graph data yet)");
 					return;
 				}
 
-				console.log("[InfraNodus][webview] sending stored graphData to iframe (LOAD_JSON)");
+				console.log("[InfraNodus][webview] sending latest graphData to iframe (LOAD_JSON)");
 				const iframe = document.getElementById("graphFrame");
 				if (iframe && iframe.contentWindow) {
-					// Try both message types to see which one works
 					iframe.contentWindow.postMessage(
 						{
 							type: "LOAD_JSON",
-							payload: storedGraphData,
+							payload: latestGraphData,
 						},
 						"*",
 					);
@@ -2079,18 +2074,6 @@
 						command: "refreshGraphStats",
 						type: "REFRESH_GRAPH",
 					});
-
-					// Also try UPDATE_GRAPH as backup
-					// TODO use if there's a problem with webview reload
-					// setTimeout(() => {
-					//     iframe.contentWindow.postMessage({
-					//         type: 'UPDATE_GRAPH',
-					//         payload: storedGraphData
-					//     }, '*');
-					//     console.log("Sent UPDATE_GRAPH message to iframe");
-					// }, 500);
-
-					hasRestoredData = true;
 				}
 			}
 
@@ -2104,9 +2087,11 @@
 					});
 				}
 
-				// Listen for READY message from iframe
+				// Listen for READY message from iframe — the only point where a
+				// full graph is handed to the app (see iframeReady above).
 				if (message.type === "READY") {
-					console.log("[InfraNodus][webview] iframe → READY, will replay stored graphData if any");
+					console.log("[InfraNodus][webview] iframe → READY, delivering latest graphData if any");
+					iframeReady = true;
 					sendGraphDataToIframe();
 				}
 
@@ -2126,38 +2111,34 @@
 						console.error("[InfraNodus][webview] PROCESSING_ERROR", message.error);
 						break;
 
-					case "LOAD_JSON":
-						console.log("[InfraNodus][webview] LOAD_JSON (handler #2) → forwarding to iframe", {
-							hasPayload: !!message.payload,
-							payloadKeys:
-								message.payload && typeof message.payload === "object"
-									? Object.keys(message.payload)
-									: [],
-						});
+					case "LOAD_JSON": {
+						if (message.payload && message.payload.error) {
+							break; // surfaced as showError by the iframe-message handler
+						}
+						// Store the data in vscode state and remember it as the
+						// newest graph for the READY replay.
+						patchState({ graphData: message.payload });
+						latestGraphData = message.payload;
+
 						const iframe = document.getElementById("graphFrame");
-						if (iframe && iframe.contentWindow) {
-							// Store the data in vscode state
-							patchState({ graphData: message.payload });
-
-							iframe.contentWindow.postMessage(
-								{
-									type: "LOAD_JSON",
-									payload: message.payload,
-								},
-								"*",
+						if (iframeReady && iframe && iframe.src) {
+							// The app is live with a previous graph — reboot it. The
+							// READY it emits after reloading pulls in latestGraphData.
+							console.log(
+								"[InfraNodus][webview] LOAD_JSON → reloading iframe for a clean graph load",
 							);
-
-							vscode.postMessage({
-								command: "refreshGraphStats",
-								type: "REFRESH_GRAPH",
-							});
+							iframeReady = false;
+							iframe.src = iframe.src;
 						} else {
-							console.warn("[InfraNodus][webview] LOAD_JSON: iframe or contentWindow missing", {
-								hasIframe: !!iframe,
-								hasContentWindow: !!(iframe && iframe.contentWindow),
-							});
+							// The app is still booting (or src not set yet) — nothing
+							// to do: the upcoming READY delivers latestGraphData.
+							console.log(
+								"[InfraNodus][webview] LOAD_JSON → iframe not ready, READY replay will deliver",
+								{ hasSrc: !!(iframe && iframe.src) },
+							);
 						}
 						break;
+					}
 					case "RECALCULATION":
 						console.log(
 							"[InfraNodus][webview] RECALCULATION → forwarding to iframe (preserves local state)",
@@ -2183,12 +2164,12 @@
 							// graph wholesale while preserving sibling keys like topicNames.
 							// Do NOT turn this into a deep merge.
 							const currentRecalcState = vscode.getState() || {};
-							patchState({
-								graphData: {
-									...(currentRecalcState.graphData || {}),
-									...message.payload,
-								},
-							});
+							const mergedRecalcGraphData = {
+								...(currentRecalcState.graphData || {}),
+								...message.payload,
+							};
+							patchState({ graphData: mergedRecalcGraphData });
+							latestGraphData = mergedRecalcGraphData;
 
 							recalcIframe.contentWindow.postMessage(
 								{
