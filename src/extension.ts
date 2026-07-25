@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import axios from "axios";
 import { jwtDecode, JwtPayload } from "jwt-decode";
-import { Subject } from "rxjs";
+import { Subject, Subscription } from "rxjs";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -976,6 +976,7 @@ class CodeGraphBuilder {
 class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _view?: vscode.WebviewView;
 	private topicsSubject = new Subject<any>();
+	private _topicsSubscription?: Subscription;
 	private _lastSearchPattern: string = "";
 	private _lastFilesToInclude: string = "";
 	private _symbolTable: CodeSymbolTable = new Map();
@@ -1048,8 +1049,13 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		// Process the active document immediately when the view is resolved
 		this.processDocument();
 
-		// Subscribe to topics updates
-		this.topicsSubject.subscribe((data) => {
+		// Subscribe to topics updates. The view is re-resolved every time it
+		// becomes visible again (no retainContextWhenHidden), so drop the
+		// previous subscription first — otherwise they accumulate and each
+		// analysis result gets posted several times (the second copy going out
+		// as a spurious RECALCULATION).
+		this._topicsSubscription?.unsubscribe();
+		this._topicsSubscription = this.topicsSubject.subscribe((data) => {
 			console.log("[InfraNodus][ext] topicsSubject next → will post LOAD_JSON to webview", {
 				hasEntries: !!data?.entriesAndGraphOfContext,
 				hasGraph: !!data?.entriesAndGraphOfContext?.graph,
@@ -1593,11 +1599,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							// explicit cluster selection, or the whole-graph
 							// "graph summary" action which targets all topics.
 							let contentWithPrefix = `${prefix}\n\n${graphToUse}`;
-							let contentForBackend = graphToUse;
+							// The backend prompt is graph-only: the underlying statements
+							// are shown in the preview/clipboard for transparency but are
+							// NOT sent to the AI (kept out of both the prompt and the
+							// promptContext field below).
+							const contentForBackend = graphToUse;
 							if (contentToUse) {
 								const contextBlock = `\n\nAnd take this context into account:\n\n${contentToUse}`;
 								contentWithPrefix += contextBlock;
-								contentForBackend += contextBlock;
 							}
 							vscode.env.clipboard.writeText(contentWithPrefix);
 
@@ -1630,7 +1639,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 									adviceRequestId,
 									requestMode,
 									prompt: contentForBackend,
-									promptContext: contentToUse,
+									promptContext: "",
 									pinnedNodes: selectedWords,
 									topicsToProcess: selectedClusters,
 								});
@@ -2635,6 +2644,18 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				responseKeys: response.data ? Object.keys(response.data) : [],
 			});
 
+			// A newer analysis was requested while this one was in flight (e.g.
+			// the auto-analyze of the still-active editor racing the explicit
+			// "Visualize as Graph" on another file). Displaying this response
+			// would replace the newer graph with an older one — drop it.
+			if (this._lastProcessedKey !== docKey) {
+				console.log(
+					"[InfraNodus][ext] discarding stale processDocument response",
+					{ requestedKey: docKey, currentKey: this._lastProcessedKey },
+				);
+				return;
+			}
+
 			if (response.status !== 200) {
 				throw new Error(
 					formatNon200Error("graphAndStatements", response),
@@ -2871,6 +2892,17 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				hasGraph: !!response.data?.entriesAndGraphOfContext?.graph,
 			});
 
+			// Same stale-response guard as processDocument: if another analysis
+			// superseded this one while the request was in flight, drop it. No
+			// PROCESSING_COMPLETE here — the newer request owns the loading state.
+			if (this._lastProcessedKey !== contentKey) {
+				console.log(
+					"[InfraNodus][ext] discarding stale processContent response",
+					{ requestedKey: contentKey, currentKey: this._lastProcessedKey },
+				);
+				return;
+			}
+
 			if (response.status !== 200) {
 				throw new Error(
 					formatNon200Error("graphAndStatements (process)", response),
@@ -3023,6 +3055,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					const fileContent = this._processTextForAnalysis(
 						document.getText(),
 						name,
+						false,
 					);
 					if (fileContent.trim()) {
 						// Only include non-empty files
@@ -3178,7 +3211,20 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		return resultToReturn;
 	}
 
-	public _processTextForAnalysis(text: string, fileName: string): string {
+	public _processTextForAnalysis(
+		text: string,
+		fileName: string,
+		allowRawJson: boolean = true,
+	): string {
+		// JSON/NDJSON documents must reach the server verbatim —
+		// /api/v1/graphAndStatements detects them and processes them itself:
+		// NetworkX node-link graphs become edge statements, any other JSON gets
+		// its text fields extracted. Any extraction here would corrupt them.
+		// Folder analysis passes allowRawJson=false: there files are
+		// concatenated into one text, where raw JSON would only add noise.
+		if (allowRawJson && this._isStructuredJsonDocument(text, fileName)) {
+			return text;
+		}
 		const effective = this._resolveContentMode(fileName);
 		// PARSED_CODE never reaches this method via the main paths — processDocument /
 		// processFolderContent dispatch to the code-graph builder. If something does
@@ -3188,6 +3234,38 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			return this._extractParsedText(text, fileName);
 		}
 		return this._compressCodeBlocks(text);
+	}
+
+	// Mirrors the server-side detection in infranodus-app (parseJsonOrNdjson):
+	// a .json/.jsonl/.ndjson file that is a JSON object/array, or an NDJSON
+	// stream where every non-empty line parses to an object. Kept strict and
+	// aligned so anything sent raw here is guaranteed to be recognized there.
+	private _isStructuredJsonDocument(text: string, fileName: string): boolean {
+		const ext = this._getFileExtension(fileName);
+		if (ext !== "json" && ext !== "jsonl" && ext !== "ndjson") return false;
+		const trimmed = text.trim();
+		if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
+		try {
+			const parsed = JSON.parse(trimmed);
+			return parsed !== null && typeof parsed === "object";
+		} catch {
+			// fall through to the NDJSON attempt
+		}
+		const lines = trimmed.split("\n").filter((line) => line.trim());
+		if (lines.length < 2) return false;
+		return lines.every((line) => {
+			if (!line.trim().startsWith("{")) return false;
+			try {
+				const record = JSON.parse(line);
+				return (
+					record !== null &&
+					typeof record === "object" &&
+					!Array.isArray(record)
+				);
+			} catch {
+				return false;
+			}
+		});
 	}
 
 	public _stripMarkupTags(input: string): string {
