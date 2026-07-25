@@ -1593,11 +1593,14 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 							// explicit cluster selection, or the whole-graph
 							// "graph summary" action which targets all topics.
 							let contentWithPrefix = `${prefix}\n\n${graphToUse}`;
-							let contentForBackend = graphToUse;
+							// The backend prompt is graph-only: the underlying statements
+							// are shown in the preview/clipboard for transparency but are
+							// NOT sent to the AI (kept out of both the prompt and the
+							// promptContext field below).
+							const contentForBackend = graphToUse;
 							if (contentToUse) {
 								const contextBlock = `\n\nAnd take this context into account:\n\n${contentToUse}`;
 								contentWithPrefix += contextBlock;
-								contentForBackend += contextBlock;
 							}
 							vscode.env.clipboard.writeText(contentWithPrefix);
 
@@ -1630,7 +1633,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 									adviceRequestId,
 									requestMode,
 									prompt: contentForBackend,
-									promptContext: contentToUse,
+									promptContext: "",
 									pinnedNodes: selectedWords,
 									topicsToProcess: selectedClusters,
 								});
@@ -3179,6 +3182,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	}
 
 	public _processTextForAnalysis(text: string, fileName: string): string {
+		// NetworkX node-link JSON graphs (e.g. Graphify's graph.json) must reach
+		// the server verbatim — /api/v1/graphAndStatements detects them and turns
+		// the edges into statements itself. Any extraction here would corrupt them.
+		if (this._isNetworkXNodeLinkJson(text, fileName)) {
+			return text;
+		}
 		const effective = this._resolveContentMode(fileName);
 		// PARSED_CODE never reaches this method via the main paths — processDocument /
 		// processFolderContent dispatch to the code-graph builder. If something does
@@ -3188,6 +3197,31 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 			return this._extractParsedText(text, fileName);
 		}
 		return this._compressCodeBlocks(text);
+	}
+
+	// Mirrors the server-side detection in infranodus-app: a .json file whose
+	// top level has a "nodes" array and a "links"/"edges" array. The string
+	// prefilter keeps JSON.parse off ordinary files.
+	private _isNetworkXNodeLinkJson(text: string, fileName: string): boolean {
+		if (this._getFileExtension(fileName) !== "json") return false;
+		const trimmed = text.trim();
+		if (
+			!trimmed.startsWith("{") ||
+			!trimmed.includes('"nodes"') ||
+			(!trimmed.includes('"links"') && !trimmed.includes('"edges"'))
+		) {
+			return false;
+		}
+		try {
+			const parsed = JSON.parse(trimmed);
+			return (
+				!!parsed &&
+				Array.isArray(parsed.nodes) &&
+				(Array.isArray(parsed.links) || Array.isArray(parsed.edges))
+			);
+		} catch {
+			return false;
+		}
 	}
 
 	public _stripMarkupTags(input: string): string {
