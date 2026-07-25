@@ -5,12 +5,26 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<title>InfraNodus Graph</title>
 		<style>
+			html,
+			body {
+				/* The page must NEVER scroll or rubber-band: any leftover page
+				   overflow means wheel events that escape the AI panel (at its
+				   scroll edges or over its header) nudge the whole page — graph
+				   iframe included — which shows up as a "flicker" while reading
+				   the AI response. */
+				overflow: hidden;
+				overscroll-behavior: none;
+			}
 			body {
 				margin: 0;
 				padding: 10px 10px 14px 10px;
 				display: flex;
 				flex-direction: column;
-				height: calc(100vh - 14px);
+				/* border-box so the padding is included in 100vh — the old
+				   calc(100vh - 14px) + 24px vertical padding made the page 10px
+				   taller than the viewport, i.e. scrollable. */
+				box-sizing: border-box;
+				height: 100vh;
 				--button-bg: rgba(68, 68, 68, 0.92);
 				--button-bg-hover: rgba(90, 90, 90, 0.95);
 				--button-border: rgba(255, 255, 255, 0.25);
@@ -106,6 +120,18 @@
 				gap: 10px;
 				z-index: 1000;
 			}
+
+			/* Every element overlaid on the graph iframe must live on its own
+			   compositor layer. Without this they paint into the page's shared
+			   layer, and any scroll repaint of that layer has to re-blend with
+			   the continuously animating iframe surface underneath — the two go
+			   out of sync for a frame and ALL overlays visibly flicker. */
+			.button-container,
+			.api-key-container,
+			.loading-overlay {
+				transform: translateZ(0);
+				backface-visibility: hidden;
+			}
 			.overlay-button {
 				width: 32px;
 				height: 32px;
@@ -162,6 +188,10 @@
 				width: 100%;
 				height: 100%;
 				margin-bottom: 4px;
+				/* Mirrors .graph-container { isolation: isolate } from the
+				   infranodus-graph flicker fix: keeps the iframe and the panels
+				   stacked above it in an independent stacking/compositing scope. */
+				isolation: isolate;
 			}
 			.loading-overlay {
 				position: absolute;
@@ -199,6 +229,20 @@
 				height: 100%;
 				border: none;
 				background: var(--iframe-bg);
+				/* Host-side half of the graph flicker fix (the in-iframe half —
+				   pinning the WebGL canvas to its own layer — ships in
+				   infranodus-graph styles.css, commit e47249b). The graph canvas
+				   animates continuously; without an explicit layer the iframe's
+				   embedding surface is rasterized together with the rest of this
+				   page, so scrolling the AI panel above it re-rasters both and
+				   they desync for a frame (visible flicker). translateZ(0) gives
+				   the iframe its own compositor layer so panel scrolling and the
+				   canvas animation composite independently. */
+				transform: translateZ(0);
+				backface-visibility: hidden;
+				/* Explicit stacking floor: keeps the iframe's surface strictly
+				   below every overlay layer in its own stacking context. */
+				z-index: 0;
 			}
 
 			.prompt-panel {
@@ -218,18 +262,25 @@
 				overflow: hidden;
 				z-index: 1100;
 				color: var(--panel-text);
-				transform: translateY(-6px);
+				/* translateZ keeps the panel on its own compositor layer in BOTH
+				   animation states — see the overlay layering comment above. */
+				transform: translateY(-6px) translateZ(0);
 				opacity: 0;
 				transition:
 					transform 0.18s ease,
 					opacity 0.18s ease;
 				isolation: isolate;
 				will-change: transform;
+				/* The panel floats above a cross-origin iframe (composited in a
+				   separate process). Without paint containment, scrolling the
+				   panel body forces repaints that interleave with the iframe's
+				   layer and flicker. */
+				contain: paint;
 			}
 
 			.prompt-panel.visible {
 				display: flex;
-				transform: translateY(0);
+				transform: translateY(0) translateZ(0);
 				opacity: 1;
 			}
 
@@ -377,7 +428,19 @@
 				white-space: pre-wrap;
 				word-break: break-word;
 				overflow-y: auto;
-				overflow-x: auto;
+				/* pre-wrap + break-word never overflows horizontally; a toggling
+				   4px horizontal scrollbar only added jitter while scrolling. */
+				overflow-x: hidden;
+				/* Give the scroller its own compositor layer and keep the scroll
+				   from chaining/bouncing into the page — scrolling an un-layered
+				   overlay above the graph iframe flickers in Electron. */
+				transform: translateZ(0);
+				backface-visibility: hidden;
+				overscroll-behavior: contain;
+				/* Let the compositor thread own the scrolling — main-thread
+				   scrolls repaint the layer every frame over the animating
+				   iframe, which is exactly the flicker. */
+				will-change: scroll-position;
 				color: var(--panel-body-text);
 				font-family: var(
 					--vscode-editor-font-family,
@@ -697,6 +760,10 @@
 			}
 
 			.export-preview-text {
+				transform: translateZ(0);
+				backface-visibility: hidden;
+				overscroll-behavior: contain;
+				will-change: scroll-position;
 				box-sizing: border-box;
 				flex: 1 1 auto;
 				min-height: 160px;
