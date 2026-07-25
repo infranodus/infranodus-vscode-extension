@@ -3026,6 +3026,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					const fileContent = this._processTextForAnalysis(
 						document.getText(),
 						name,
+						false,
 					);
 					if (fileContent.trim()) {
 						// Only include non-empty files
@@ -3181,11 +3182,18 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		return resultToReturn;
 	}
 
-	public _processTextForAnalysis(text: string, fileName: string): string {
-		// NetworkX node-link JSON graphs (e.g. Graphify's graph.json) must reach
-		// the server verbatim — /api/v1/graphAndStatements detects them and turns
-		// the edges into statements itself. Any extraction here would corrupt them.
-		if (this._isNetworkXNodeLinkJson(text, fileName)) {
+	public _processTextForAnalysis(
+		text: string,
+		fileName: string,
+		allowRawJson: boolean = true,
+	): string {
+		// JSON/NDJSON documents must reach the server verbatim —
+		// /api/v1/graphAndStatements detects them and processes them itself:
+		// NetworkX node-link graphs become edge statements, any other JSON gets
+		// its text fields extracted. Any extraction here would corrupt them.
+		// Folder analysis passes allowRawJson=false: there files are
+		// concatenated into one text, where raw JSON would only add noise.
+		if (allowRawJson && this._isStructuredJsonDocument(text, fileName)) {
 			return text;
 		}
 		const effective = this._resolveContentMode(fileName);
@@ -3199,29 +3207,36 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		return this._compressCodeBlocks(text);
 	}
 
-	// Mirrors the server-side detection in infranodus-app: a .json file whose
-	// top level has a "nodes" array and a "links"/"edges" array. The string
-	// prefilter keeps JSON.parse off ordinary files.
-	private _isNetworkXNodeLinkJson(text: string, fileName: string): boolean {
-		if (this._getFileExtension(fileName) !== "json") return false;
+	// Mirrors the server-side detection in infranodus-app (parseJsonOrNdjson):
+	// a .json/.jsonl/.ndjson file that is a JSON object/array, or an NDJSON
+	// stream where every non-empty line parses to an object. Kept strict and
+	// aligned so anything sent raw here is guaranteed to be recognized there.
+	private _isStructuredJsonDocument(text: string, fileName: string): boolean {
+		const ext = this._getFileExtension(fileName);
+		if (ext !== "json" && ext !== "jsonl" && ext !== "ndjson") return false;
 		const trimmed = text.trim();
-		if (
-			!trimmed.startsWith("{") ||
-			!trimmed.includes('"nodes"') ||
-			(!trimmed.includes('"links"') && !trimmed.includes('"edges"'))
-		) {
-			return false;
-		}
+		if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return false;
 		try {
 			const parsed = JSON.parse(trimmed);
-			return (
-				!!parsed &&
-				Array.isArray(parsed.nodes) &&
-				(Array.isArray(parsed.links) || Array.isArray(parsed.edges))
-			);
+			return parsed !== null && typeof parsed === "object";
 		} catch {
-			return false;
+			// fall through to the NDJSON attempt
 		}
+		const lines = trimmed.split("\n").filter((line) => line.trim());
+		if (lines.length < 2) return false;
+		return lines.every((line) => {
+			if (!line.trim().startsWith("{")) return false;
+			try {
+				const record = JSON.parse(line);
+				return (
+					record !== null &&
+					typeof record === "object" &&
+					!Array.isArray(record)
+				);
+			} catch {
+				return false;
+			}
+		});
 	}
 
 	public _stripMarkupTags(input: string): string {
