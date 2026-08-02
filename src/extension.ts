@@ -205,6 +205,301 @@ function logInfraNodusRequestError(error: unknown) {
 	console.error("InfraNodus request failed:", error);
 }
 
+/* ------------------------------------------------------------------ *
+ * infranodus/manifest.json — the workspace routing table
+ *
+ * After a successful export we register the graph in
+ * <workspaceRoot>/infranodus/manifest.json so that agents working in this
+ * workspace (Claude Code / Cursor / anything reading CLAUDE.md) can find
+ * the graph and query it via the InfraNodus MCP tools instead of grepping
+ * files. Full contract: docs/manifest-contract.md.
+ *
+ * The extension is only ONE of several writers of this file (the
+ * infranodus-cli skill owns it), so every write is a read–modify–write
+ * that touches exactly one entry and preserves everything else. Entries
+ * we create are always `policy: "external"` — that tells the skill's
+ * tooling the entry is query-only and must never be uploaded to or
+ * deleted.
+ * ------------------------------------------------------------------ */
+
+interface ManifestScopeEntry {
+	graphName: string;
+	policy: "external";
+	source: "vscode-extension";
+	purpose?: string;
+	url?: string;
+	topics?: string[];
+	gaps?: string[];
+	hint?: string;
+	file?: string;
+	statements?: number;
+	updated: string;
+	[key: string]: unknown;
+}
+
+/** Today as ISO `YYYY-MM-DD` in the user's local timezone. */
+function isoToday(): string {
+	const now = new Date();
+	const pad = (n: number) => String(n).padStart(2, "0");
+	return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/**
+ * Render one entry of `extendedGraphSummary.mainTopics` / `.contentGaps`
+ * as a single line. The API may return plain strings or objects; we accept
+ * both rather than assuming a shape, because metadata must never block an
+ * export.
+ */
+function summaryItemToString(item: unknown): string {
+	if (typeof item === "string") return item.trim();
+	if (typeof item === "number" || typeof item === "boolean") {
+		return String(item);
+	}
+	if (!item || typeof item !== "object") return "";
+
+	const obj = item as Record<string, unknown>;
+	const pickString = (keys: string[]): string => {
+		for (const key of keys) {
+			const value = obj[key];
+			if (typeof value === "string" && value.trim()) return value.trim();
+		}
+		return "";
+	};
+	const pickList = (keys: string[]): string => {
+		for (const key of keys) {
+			const value = obj[key];
+			if (Array.isArray(value) && value.length > 0) {
+				const parts = value
+					.map((v) =>
+						typeof v === "string"
+							? v.trim()
+							: v && typeof v === "object"
+								? String(
+										(v as Record<string, unknown>).name ??
+											(v as Record<string, unknown>).label ??
+											"",
+									).trim()
+								: String(v ?? "").trim(),
+					)
+					.filter(Boolean);
+				if (parts.length > 0) return parts.join(" ");
+			}
+			if (typeof value === "string" && value.trim()) return value.trim();
+		}
+		return "";
+	};
+
+	const name = pickString(["name", "topic", "label", "title", "cluster", "gap"]);
+	const detail = pickList([
+		"keywords",
+		"concepts",
+		"nodes",
+		"terms",
+		"description",
+	]);
+
+	if (name && detail) return `${name}: ${detail}`;
+	if (name) return name;
+	if (detail) return detail;
+
+	try {
+		return JSON.stringify(item);
+	} catch {
+		return "";
+	}
+}
+
+/** Normalize a topics/gaps array to at most `limit` non-empty strings. */
+function normalizeSummaryList(
+	value: unknown,
+	limit: number,
+): string[] | undefined {
+	if (!Array.isArray(value) || value.length === 0) return undefined;
+	const out: string[] = [];
+	for (const item of value) {
+		const line = summaryItemToString(item);
+		if (line) out.push(line);
+		if (out.length >= limit) break;
+	}
+	return out.length > 0 ? out : undefined;
+}
+
+/**
+ * Resolve the workspace folder that should own the manifest, plus the
+ * workspace-relative path of the analyzed source when it points at a real
+ * file on disk (used for the optional `file` provenance field).
+ *
+ * `relativeSource` is whatever ClipboardViewProvider recorded as the
+ * analyzed URL: a workspace-relative file or folder path, `"*"` for a
+ * whole-repo diff, or empty.
+ */
+async function resolveManifestTarget(relativeSource: string): Promise<
+	| {
+			folder: vscode.WorkspaceFolder;
+			sourceFile?: string;
+	  }
+	| undefined
+> {
+	const folders = vscode.workspace.workspaceFolders;
+	if (!folders || folders.length === 0) return undefined;
+
+	const cleaned = (relativeSource || "").trim();
+	if (!cleaned || cleaned === "*") return { folder: folders[0] };
+
+	for (const folder of folders) {
+		// In multi-root workspaces asRelativePath prefixes the folder name;
+		// try both the raw path and the de-prefixed one.
+		const candidates = [cleaned];
+		if (cleaned.startsWith(`${folder.name}/`)) {
+			candidates.push(cleaned.slice(folder.name.length + 1));
+		}
+		for (const candidate of candidates) {
+			const uri = vscode.Uri.joinPath(folder.uri, candidate);
+			try {
+				const stat = await vscode.workspace.fs.stat(uri);
+				return {
+					folder,
+					sourceFile:
+						stat.type === vscode.FileType.File ? candidate : undefined,
+				};
+			} catch {
+				// not in this folder — keep looking
+			}
+		}
+	}
+
+	return { folder: folders[0] };
+}
+
+/**
+ * Read–modify–write `<root>/infranodus/manifest.json`, upserting a single
+ * entry keyed by graph name. Returns false (without writing) if the file
+ * exists but is not parseable — clobbering another writer's entries is
+ * worse than skipping registration.
+ */
+async function upsertManifestEntry(
+	folder: vscode.WorkspaceFolder,
+	key: string,
+	entry: ManifestScopeEntry,
+): Promise<boolean> {
+	const dirUri = vscode.Uri.joinPath(folder.uri, "infranodus");
+	const manifestUri = vscode.Uri.joinPath(dirUri, "manifest.json");
+
+	let manifest: Record<string, any> = { scopes: {} };
+	let raw: string | undefined;
+	try {
+		raw = Buffer.from(await vscode.workspace.fs.readFile(manifestUri)).toString(
+			"utf8",
+		);
+	} catch {
+		raw = undefined; // no manifest yet — we create the skeleton below
+	}
+
+	if (raw !== undefined && raw.trim()) {
+		try {
+			const parsed = JSON.parse(raw);
+			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+				throw new Error("manifest root is not an object");
+			}
+			manifest = parsed;
+		} catch (error) {
+			vscode.window.showWarningMessage(
+				`InfraNodus: could not register "${key}" — infranodus/manifest.json is not valid JSON. Fix or remove it and export again.`,
+			);
+			console.error("[InfraNodus][ext] manifest parse failed", error);
+			return false;
+		}
+	}
+
+	if (
+		!manifest.scopes ||
+		typeof manifest.scopes !== "object" ||
+		Array.isArray(manifest.scopes)
+	) {
+		manifest.scopes = {};
+	}
+
+	const rawExisting = manifest.scopes[key];
+	const existing =
+		rawExisting && typeof rawExisting === "object" && !Array.isArray(rawExisting)
+			? (rawExisting as Record<string, unknown>)
+			: undefined;
+
+	// Only ever update entries this extension created. Anything the skill
+	// owns (`policy: "generated"`) or a human hand-wrote stays untouched —
+	// re-exporting under the same name must not silently rewrite it.
+	if (existing && existing.source !== "vscode-extension") {
+		vscode.window.showWarningMessage(
+			`InfraNodus: "${key}" already exists in infranodus/manifest.json and is managed elsewhere — not overwriting. Export under a different name to register it.`,
+		);
+		return false;
+	}
+
+	// Merge over our own previous entry so unknown keys survive, but drop
+	// metadata fields the current response didn't provide rather than
+	// leaving stale topics/gaps from an earlier export behind.
+	const merged: Record<string, unknown> = { ...(existing ?? {}), ...entry };
+	for (const field of [
+		"purpose",
+		"url",
+		"topics",
+		"gaps",
+		"hint",
+		"file",
+		"statements",
+	]) {
+		if (!(field in entry)) delete merged[field];
+	}
+	manifest.scopes[key] = merged;
+
+	await vscode.workspace.fs.createDirectory(dirUri);
+	await vscode.workspace.fs.writeFile(
+		manifestUri,
+		Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
+	);
+	return true;
+}
+
+/**
+ * Append a dated section to `infranodus/INFRANODUS_REPORT.md`. The file is
+ * append-only by contract — existing content is never modified.
+ */
+async function appendManifestReport(
+	folder: vscode.WorkspaceFolder,
+	entry: ManifestScopeEntry,
+): Promise<void> {
+	const dirUri = vscode.Uri.joinPath(folder.uri, "infranodus");
+	const reportUri = vscode.Uri.joinPath(dirUri, "INFRANODUS_REPORT.md");
+
+	let existing = "";
+	try {
+		existing = Buffer.from(
+			await vscode.workspace.fs.readFile(reportUri),
+		).toString("utf8");
+	} catch {
+		existing = "# InfraNodus build log\n";
+	}
+
+	const heading = `## Export ${entry.updated}`;
+	const lines: string[] = [];
+	if (!existing.includes(heading)) {
+		lines.push("", heading);
+	}
+	lines.push(
+		"",
+		entry.url
+			? `### ${entry.graphName} — ${entry.url}`
+			: `### ${entry.graphName}`,
+	);
+	if (entry.purpose) lines.push(`- purpose: ${entry.purpose}`);
+	if (entry.topics?.length) lines.push(`- topics: ${entry.topics.join("; ")}`);
+	if (entry.gaps?.length) lines.push(`- gaps: ${entry.gaps.join("; ")}`);
+
+	const body = `${existing.replace(/\s*$/, "")}\n${lines.join("\n")}\n`;
+	await vscode.workspace.fs.createDirectory(dirUri);
+	await vscode.workspace.fs.writeFile(reportUri, Buffer.from(body, "utf8"));
+}
+
 export function activate(context: vscode.ExtensionContext) {
 	const clipboardProvider = new ClipboardViewProvider(
 		context.extensionUri,
@@ -984,6 +1279,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	private _wordsToHide: string[] = [];
 	private _lastProcessedKey: string = "";
 	private _initialLoadDoneForKey: string | null = null;
+	/**
+	 * What the currently open export preview holds, when it isn't just the
+	 * analyzed document (e.g. an AI advice response). Used for the manifest
+	 * `purpose` field; cleared on every preview request and submit.
+	 */
+	private _pendingExportSourceLabel?: string;
 	private _codeGraphBuilder = new CodeGraphBuilder((msg) =>
 		console.log("[InfraNodus CodeGraph]", msg),
 	);
@@ -1698,6 +1999,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						return;
 					}
 					const defaultName = this.getAiAdviceExportGraphName(adviceKindRaw);
+					// Remember what the preview holds so the manifest entry
+					// written after submit says "AI <kind> response" rather than
+					// pointing at the analyzed document.
+					this._pendingExportSourceLabel = `AI ${adviceKindRaw} response`;
 					this._view?.webview.postMessage({
 						command: "showExportPreview",
 						defaultName,
@@ -1715,6 +2020,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 					}
 					const previewText = this._clipboardProvider.getCurrentContent() || "";
 					const defaultName = this.getDefaultExportGraphName();
+					this._pendingExportSourceLabel = undefined;
 					if (!previewText) {
 						this._view?.webview.postMessage({
 							command: "exportPreviewUnavailable",
@@ -1760,9 +2066,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						});
 						return;
 					}
+					const sourceLabel = this._pendingExportSourceLabel;
+					this._pendingExportSourceLabel = undefined;
 					const result = await this.exportTextToInfraNodus({
 						name: submitName,
 						text: submitText,
+						sourceLabel,
 					});
 					this._view?.webview.postMessage({
 						command: "exportToInfraNodusResult",
@@ -2278,9 +2587,15 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 	public async exportTextToInfraNodus({
 		name,
 		text,
+		sourceLabel,
 	}: {
 		name: string;
 		text: string;
+		/**
+		 * What was exported, for the manifest's `purpose` field — e.g.
+		 * "AI idea response". Defaults to the analyzed document itself.
+		 */
+		sourceLabel?: string;
 	}): Promise<{ success: boolean; error?: string }> {
 		// Anonymous requests cannot persist graphs server-side (the InfraNodus
 		// API forces doNotSave=true for the demo apiToken). Block here and
@@ -2317,7 +2632,10 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 		try {
 			this._view?.webview.postMessage({ command: "showLoading" });
-			const exportUrl = `${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&contextName=${encodeURIComponent(name)}`;
+			// extendedGraphSummary + includeGraphSummary carry the topics,
+			// content gaps and structural overview we record in
+			// infranodus/manifest.json — same request, no extra round-trip.
+			const exportUrl = `${this.getServerUrl()}/api/v1/graphAndStatements?doNotSave=false&addstats=true&extendedGraphSummary=true&includeGraphSummary=true&contextName=${encodeURIComponent(name)}`;
 			console.log("[InfraNodus][ext] POST →", exportUrl, {
 				name,
 				textLength: text?.length || 0,
@@ -2352,10 +2670,20 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 				throw new Error(errorText);
 			}
 
+			// Best-effort: never let manifest bookkeeping fail an export that
+			// already succeeded server-side.
+			const registered = await this.registerExportInManifest(
+				name,
+				response.data,
+				sourceLabel,
+			);
+
 			const openLabel = "Open in InfraNodus";
 			vscode.window
 				.showInformationMessage(
-					`Analyzed context exported to InfraNodus graph "${name}".`,
+					registered
+						? `Analyzed context exported to InfraNodus graph "${name}" and registered in infranodus/manifest.json.`
+						: `Analyzed context exported to InfraNodus graph "${name}".`,
 					openLabel,
 				)
 				.then((choice) => {
@@ -2380,10 +2708,118 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		}
 	}
 
+	/**
+	 * Register a just-exported graph in `<workspaceRoot>/infranodus/manifest.json`
+	 * so agents working in this workspace can route questions to it and query
+	 * it over MCP. See docs/manifest-contract.md.
+	 *
+	 * Entirely best-effort: any failure is logged and swallowed — the export
+	 * itself already succeeded, and metadata must never turn that into an
+	 * error. Returns true only if the manifest was actually written.
+	 */
+	private async registerExportInManifest(
+		graphName: string,
+		responseData: any,
+		sourceLabel?: string,
+	): Promise<boolean> {
+		try {
+			const analyzedSource = this._clipboardProvider.getCurrentUrl() || "";
+			const target = await resolveManifestTarget(analyzedSource);
+			// No workspace open → nothing to register against.
+			if (!target) return false;
+
+			// The API nests parts of the payload under
+			// `entriesAndGraphOfContext`; look in both places rather than
+			// assuming one shape.
+			const pick = (key: string): any =>
+				responseData?.[key] ??
+				responseData?.entriesAndGraphOfContext?.[key] ??
+				responseData?.entriesAndGraphOfContext?.graph?.[key];
+
+			const summary = pick("extendedGraphSummary");
+			const entry: ManifestScopeEntry = {
+				graphName,
+				policy: "external",
+				source: "vscode-extension",
+				updated: isoToday(),
+			};
+
+			const origin =
+				analyzedSource && analyzedSource !== "*"
+					? analyzedSource
+					: analyzedSource === "*"
+						? "repository diff"
+						: "clipboard analysis";
+			entry.purpose = sourceLabel
+				? `manual export from VSCode — ${sourceLabel} (${origin})`
+				: `manual export from VSCode — ${origin}`;
+
+			const graphUrl = pick("graphUrl");
+			if (typeof graphUrl === "string" && graphUrl.trim()) {
+				entry.url = graphUrl.trim();
+			}
+
+			const topics = normalizeSummaryList(
+				summary?.mainTopics ?? summary?.mainTopicalClusters,
+				10,
+			);
+			if (topics) entry.topics = topics;
+
+			const gaps = normalizeSummaryList(summary?.contentGaps, 6);
+			if (gaps) entry.gaps = gaps;
+
+			const hint = pick("graphSummary");
+			if (typeof hint === "string" && hint.trim()) entry.hint = hint.trim();
+
+			if (target.sourceFile) entry.file = target.sourceFile;
+
+			const stats = pick("statistics");
+			const statements =
+				typeof stats?.statementsCount === "number"
+					? stats.statementsCount
+					: typeof stats?.statements === "number"
+						? stats.statements
+						: Array.isArray(responseData?.entriesAndGraphOfContext?.statements)
+							? responseData.entriesAndGraphOfContext.statements.length
+							: undefined;
+			if (typeof statements === "number" && Number.isFinite(statements)) {
+				entry.statements = statements;
+			}
+
+			const written = await upsertManifestEntry(
+				target.folder,
+				graphName,
+				entry,
+			);
+			if (!written) return false;
+
+			try {
+				await appendManifestReport(target.folder, entry);
+			} catch (error) {
+				console.error("[InfraNodus][ext] report append failed", error);
+			}
+
+			console.log("[InfraNodus][ext] registered graph in manifest", {
+				graphName,
+				folder: target.folder.name,
+				topics: entry.topics?.length || 0,
+				gaps: entry.gaps?.length || 0,
+			});
+			return true;
+		} catch (error) {
+			console.error("[InfraNodus][ext] manifest registration failed", error);
+			return false;
+		}
+	}
+
 	public async exportAnalyzedContextToInfraNodus() {
 		if (!(await this.ensureCanExport())) {
 			return;
 		}
+
+		// This path always exports the analyzed document, so drop any label
+		// left over from an AI-advice preview the user opened and abandoned.
+		this._pendingExportSourceLabel = undefined;
 
 		const text = this._clipboardProvider.getCurrentContent();
 		if (!text) {
