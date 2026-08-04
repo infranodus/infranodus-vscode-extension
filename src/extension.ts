@@ -214,6 +214,11 @@ function logInfraNodusRequestError(error: unknown) {
  * the graph and query it via the InfraNodus MCP tools instead of grepping
  * files. Full contract: docs/manifest-contract.md.
  *
+ * We never create the manifest: registration only happens when the
+ * workspace ALREADY has `infranodus/manifest.json`, i.e. when the user has
+ * opted into the knowledge-base workflow by running the infranodus-cli
+ * skill there. Without it we export and stay out of the user's repo.
+ *
  * The extension is only ONE of several writers of this file (the
  * infranodus-cli skill owns it), so every write is a read–modify–write
  * that touches exactly one entry and preserves everything else. Entries
@@ -324,16 +329,29 @@ function normalizeSummaryList(
 	return out.length > 0 ? out : undefined;
 }
 
+/** True when this folder already has an `infranodus/manifest.json`. */
+async function folderHasManifest(
+	folder: vscode.WorkspaceFolder,
+): Promise<boolean> {
+	try {
+		const stat = await vscode.workspace.fs.stat(
+			vscode.Uri.joinPath(folder.uri, "infranodus", "manifest.json"),
+		);
+		return stat.type === vscode.FileType.File;
+	} catch {
+		return false;
+	}
+}
+
 /**
- * Resolve the workspace folder that should own the manifest, plus the
- * workspace-relative path of the analyzed source when it points at a real
- * file on disk (used for the optional `file` provenance field).
+ * Locate the analyzed source on disk: which workspace folder holds it and
+ * its path relative to that folder (only when it's a file, not a folder).
  *
  * `relativeSource` is whatever ClipboardViewProvider recorded as the
  * analyzed URL: a workspace-relative file or folder path, `"*"` for a
  * whole-repo diff, or empty.
  */
-async function resolveManifestTarget(relativeSource: string): Promise<
+async function locateAnalyzedSource(relativeSource: string): Promise<
 	| {
 			folder: vscode.WorkspaceFolder;
 			sourceFile?: string;
@@ -344,7 +362,7 @@ async function resolveManifestTarget(relativeSource: string): Promise<
 	if (!folders || folders.length === 0) return undefined;
 
 	const cleaned = (relativeSource || "").trim();
-	if (!cleaned || cleaned === "*") return { folder: folders[0] };
+	if (!cleaned || cleaned === "*") return undefined;
 
 	for (const folder of folders) {
 		// In multi-root workspaces asRelativePath prefixes the folder name;
@@ -368,14 +386,51 @@ async function resolveManifestTarget(relativeSource: string): Promise<
 		}
 	}
 
-	return { folder: folders[0] };
+	return undefined;
 }
 
 /**
- * Read–modify–write `<root>/infranodus/manifest.json`, upserting a single
- * entry keyed by graph name. Returns false (without writing) if the file
- * exists but is not parseable — clobbering another writer's entries is
- * worse than skipping registration.
+ * Find the workspace folder whose manifest we should write to — the one
+ * holding the analyzed source if it has a manifest, otherwise the first
+ * folder that has one.
+ *
+ * Returns undefined when no workspace folder has `infranodus/manifest.json`:
+ * that's the signal to skip registration entirely. We never create the file,
+ * so exporting from a repo that doesn't use the knowledge-base workflow
+ * leaves nothing behind.
+ */
+async function resolveManifestTarget(relativeSource: string): Promise<
+	| {
+			folder: vscode.WorkspaceFolder;
+			sourceFile?: string;
+	  }
+	| undefined
+> {
+	const folders = vscode.workspace.workspaceFolders;
+	if (!folders || folders.length === 0) return undefined;
+
+	const located = await locateAnalyzedSource(relativeSource);
+	if (located && (await folderHasManifest(located.folder))) {
+		return located;
+	}
+
+	for (const folder of folders) {
+		if (await folderHasManifest(folder)) {
+			// The source lives in a different root, so its path wouldn't be
+			// relative to this manifest — drop the `file` provenance field.
+			return { folder };
+		}
+	}
+
+	return undefined;
+}
+
+/**
+ * Read–modify–write an existing `<root>/infranodus/manifest.json`, upserting
+ * a single entry keyed by graph name. Returns false (without writing) if the
+ * file is missing — we never create it — or if it exists but isn't
+ * parseable: clobbering another writer's entries is worse than skipping
+ * registration.
  */
 async function upsertManifestEntry(
 	folder: vscode.WorkspaceFolder,
@@ -386,16 +441,18 @@ async function upsertManifestEntry(
 	const manifestUri = vscode.Uri.joinPath(dirUri, "manifest.json");
 
 	let manifest: Record<string, any> = { scopes: {} };
-	let raw: string | undefined;
+	let raw: string;
 	try {
 		raw = Buffer.from(await vscode.workspace.fs.readFile(manifestUri)).toString(
 			"utf8",
 		);
 	} catch {
-		raw = undefined; // no manifest yet — we create the skeleton below
+		// No manifest in this workspace — the user hasn't opted into the
+		// knowledge-base workflow here, so leave their repo alone.
+		return false;
 	}
 
-	if (raw !== undefined && raw.trim()) {
+	if (raw.trim()) {
 		try {
 			const parsed = JSON.parse(raw);
 			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -452,7 +509,8 @@ async function upsertManifestEntry(
 	}
 	manifest.scopes[key] = merged;
 
-	await vscode.workspace.fs.createDirectory(dirUri);
+	// No createDirectory: we only get here when manifest.json was read
+	// successfully, so infranodus/ is already there.
 	await vscode.workspace.fs.writeFile(
 		manifestUri,
 		Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
@@ -462,14 +520,18 @@ async function upsertManifestEntry(
 
 /**
  * Append a dated section to `infranodus/INFRANODUS_REPORT.md`. The file is
- * append-only by contract — existing content is never modified.
+ * append-only by contract — existing content is never modified. Only ever
+ * called after a successful manifest write, so the folder already exists.
  */
 async function appendManifestReport(
 	folder: vscode.WorkspaceFolder,
 	entry: ManifestScopeEntry,
 ): Promise<void> {
-	const dirUri = vscode.Uri.joinPath(folder.uri, "infranodus");
-	const reportUri = vscode.Uri.joinPath(dirUri, "INFRANODUS_REPORT.md");
+	const reportUri = vscode.Uri.joinPath(
+		folder.uri,
+		"infranodus",
+		"INFRANODUS_REPORT.md",
+	);
 
 	let existing = "";
 	try {
@@ -496,7 +558,6 @@ async function appendManifestReport(
 	if (entry.gaps?.length) lines.push(`- gaps: ${entry.gaps.join("; ")}`);
 
 	const body = `${existing.replace(/\s*$/, "")}\n${lines.join("\n")}\n`;
-	await vscode.workspace.fs.createDirectory(dirUri);
 	await vscode.workspace.fs.writeFile(reportUri, Buffer.from(body, "utf8"));
 }
 
@@ -2007,6 +2068,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						command: "showExportPreview",
 						defaultName,
 						text: previewText,
+						manifestAvailable: await this.hasWorkspaceManifest(),
 					});
 					return;
 				}
@@ -2036,6 +2098,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						command: "showExportPreview",
 						defaultName,
 						text: previewText,
+						manifestAvailable: await this.hasWorkspaceManifest(),
 					});
 					return;
 				}
@@ -2072,6 +2135,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 						name: submitName,
 						text: submitText,
 						sourceLabel,
+						// Absent (older webview state) means "yes" — the checkbox
+						// ships ticked.
+						saveToManifest: message.saveToManifest !== false,
 					});
 					this._view?.webview.postMessage({
 						command: "exportToInfraNodusResult",
@@ -2588,6 +2654,7 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		name,
 		text,
 		sourceLabel,
+		saveToManifest = true,
 	}: {
 		name: string;
 		text: string;
@@ -2596,6 +2663,12 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		 * "AI idea response". Defaults to the analyzed document itself.
 		 */
 		sourceLabel?: string;
+		/**
+		 * Whether to register the graph in the workspace's
+		 * infranodus/manifest.json. The export preview lets the user untick
+		 * this; it has no effect in workspaces without a manifest.
+		 */
+		saveToManifest?: boolean;
 	}): Promise<{ success: boolean; error?: string }> {
 		// Anonymous requests cannot persist graphs server-side (the InfraNodus
 		// API forces doNotSave=true for the demo apiToken). Block here and
@@ -2672,11 +2745,9 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 
 			// Best-effort: never let manifest bookkeeping fail an export that
 			// already succeeded server-side.
-			const registered = await this.registerExportInManifest(
-				name,
-				response.data,
-				sourceLabel,
-			);
+			const registered = saveToManifest
+				? await this.registerExportInManifest(name, response.data, sourceLabel)
+				: false;
 
 			const openLabel = "Open in InfraNodus";
 			vscode.window
@@ -2706,6 +2777,21 @@ class InfraNodusViewProvider implements vscode.WebviewViewProvider {
 		} finally {
 			this._view?.webview.postMessage({ command: "hideLoading" });
 		}
+	}
+
+	/**
+	 * Whether any open workspace folder already has an
+	 * `infranodus/manifest.json`. Drives the "save to manifest" checkbox in
+	 * the export preview — without a manifest there is nothing to offer, so
+	 * the checkbox stays hidden.
+	 */
+	private async hasWorkspaceManifest(): Promise<boolean> {
+		const folders = vscode.workspace.workspaceFolders;
+		if (!folders || folders.length === 0) return false;
+		for (const folder of folders) {
+			if (await folderHasManifest(folder)) return true;
+		}
+		return false;
 	}
 
 	/**
