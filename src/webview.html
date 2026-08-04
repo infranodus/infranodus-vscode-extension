@@ -759,6 +759,42 @@
 				background: var(--copy-bg-hover);
 			}
 
+			/* Only shown when the workspace has an infranodus/manifest.json —
+			   see manifestAvailable in showExportPreview. Selector is scoped to
+			   the parent so it outranks the uppercase `.export-preview-name
+			   label` field-caption styling. */
+			.export-preview-name label.export-preview-manifest {
+				display: none;
+				align-items: center;
+				gap: 6px;
+				margin-top: 4px;
+				font-size: 11px;
+				font-weight: 400;
+				letter-spacing: 0;
+				text-transform: none;
+				color: var(--panel-text-muted);
+				cursor: pointer;
+				user-select: none;
+			}
+
+			.export-preview-name label.export-preview-manifest.visible {
+				display: flex;
+			}
+
+			.export-preview-name label.export-preview-manifest:hover {
+				color: var(--panel-text);
+			}
+
+			.export-preview-name .export-preview-manifest input[type="checkbox"] {
+				box-sizing: border-box;
+				width: auto;
+				flex: 0 0 auto;
+				margin: 0;
+				padding: 0;
+				accent-color: var(--badge-color);
+				cursor: pointer;
+			}
+
 			.export-preview-text {
 				transform: translateZ(0);
 				backface-visibility: hidden;
@@ -1079,6 +1115,14 @@
 						autocomplete="off"
 						spellcheck="false"
 					/>
+					<label
+						id="exportPreviewManifestRow"
+						class="export-preview-manifest"
+						title="Record this graph in infranodus/manifest.json so AI agents working in this workspace can find and query it"
+					>
+						<input id="exportPreviewManifest" type="checkbox" checked />
+						<span>Save to local InfraNodus manifest</span>
+					</label>
 				</div>
 				<textarea
 					id="exportPreviewText"
@@ -1225,6 +1269,12 @@
 				);
 				const exportPreviewSubmit = document.getElementById(
 					"exportPreviewSubmit",
+				);
+				const exportPreviewManifest = document.getElementById(
+					"exportPreviewManifest",
+				);
+				const exportPreviewManifestRow = document.getElementById(
+					"exportPreviewManifestRow",
 				);
 				const exportPreviewFeedback = document.getElementById(
 					"exportPreviewFeedback",
@@ -1741,11 +1791,18 @@
 					}
 				}
 
-				function showExportPreview({ defaultName, text }) {
+				function showExportPreview({ defaultName, text, manifestAvailable }) {
 					promptPanel.classList.remove("visible");
 					contextPanel.classList.remove("visible");
 					exportPreviewName.value = defaultName || "vscode-context";
 					exportPreviewText.value = text || "";
+					// The manifest opt-out only exists where there's a manifest to
+					// write to. It resets to ticked on every open.
+					exportPreviewManifestRow.classList.toggle(
+						"visible",
+						!!manifestAvailable,
+					);
+					exportPreviewManifest.checked = true;
 					setExportPreviewFeedback("", false);
 					setExportPreviewSubmitting(false);
 					exportPreviewPanel.classList.add("visible");
@@ -1779,6 +1836,9 @@
 						command: "submitExportToInfraNodus",
 						name,
 						text,
+						saveToManifest:
+							exportPreviewManifestRow.classList.contains("visible") &&
+							exportPreviewManifest.checked,
 					});
 				});
 
@@ -2053,6 +2113,7 @@
 							showExportPreview({
 								defaultName: message.defaultName,
 								text: message.text,
+								manifestAvailable: message.manifestAvailable,
 							});
 							break;
 						case "exportPreviewUnavailable":
